@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.location.Location;
 import android.util.Log;
+import android.os.Binder;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.Looper;
@@ -25,7 +26,7 @@ public class TrackingService extends Service {
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
     // Global tracker configuration (Default values)
-    private long currentIntervalMillis = 10000; // 10 seconds default
+    private long currentIntervalMillis = 2000; // 2 seconds default for testing     10000; // 10 seconds default
     private long currentFastestIntervalMillis = 5000; // 5 seconds default
     private boolean isAutoAdjustEnabled = true; // Toggle for speed-based adjustment
     private float lastSpeedMps = 0.0f;
@@ -73,6 +74,11 @@ public class TrackingService extends Service {
         };
     }
 
+    // Example public method your second activity might want to call
+    public float getTotalDistance() {
+        // Assuming you track totalDistanceTraveled globally here
+        return 1500.5f;
+    }
     private void adjustIntervalBasedOnSpeed(float speedMps) {
         long newInterval;
         long newFastest;
@@ -98,7 +104,7 @@ public class TrackingService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        /*createNotificationChannel();
+        createNotificationChannel();
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Location Tracking")
                 .setContentText("Running in the background...")
@@ -111,7 +117,7 @@ public class TrackingService extends Service {
             startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
         } else {
             startForeground(1, notification);
-        }*/ // not needed??????
+        }
 
         // Check if the Intent contains custom interval update instructions
         if (intent != null && intent.hasExtra("update_interval")) {
@@ -192,9 +198,19 @@ public class TrackingService extends Service {
         }
     }
 
+    // A service needs an inner IBinder class to allow multiple activities to connect to it.
+    public class LocalBinder extends Binder {
+        public TrackingService getService() {
+            // Returns this exact running instance so activities can call its public methods
+            return TrackingService.this;
+        }
+    }
+
+    private final IBinder binder = new LocalBinder();
+
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
-        return null;
+        return binder;
     }
 }

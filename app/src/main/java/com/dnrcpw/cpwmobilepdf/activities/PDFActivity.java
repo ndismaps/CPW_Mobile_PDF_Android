@@ -3,11 +3,16 @@ package com.dnrcpw.cpwmobilepdf.activities;
 import static android.graphics.Color.argb;
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.BroadcastReceiver;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.ServiceConnection;
 import android.database.SQLException;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -22,6 +27,7 @@ import android.hardware.SensorManager;
 import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.os.Looper;
 import android.text.TextPaint;
 import android.util.DisplayMetrics;
@@ -133,10 +139,14 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     double mediaBoxHeight;
     double marginXworld; // marginLeft+marginRight
     double marginYworld; // marginTop+marginBottom
+    // Location
+    private TrackingService trackingService;
+    private boolean isBound = false;
+    private TextView distanceTextView;
+    private PDFActivity.LocationUpdateReceiver locationReceiver;
+    //private FusedLocationProviderClient mFusedLocationClient;
+    //private LocationCallback mLocationCallback;
 
-    private FusedLocationProviderClient mFusedLocationClient;
-    private LocationCallback mLocationCallback;
-    //private int count=0;
     private double lat1;
     private double long1;
     private double lat2;
@@ -223,11 +233,31 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
    //    @SuppressLint("SourceLockedOrientationActivity")
 
+    // Define the Location ServiceConnection interface
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName className, IBinder service) {
+            // Cast the IBinder to our LocalBinder and get the service instance
+            TrackingService.LocalBinder binder = (TrackingService.LocalBinder) service;
+            trackingService = binder.getService();
+            isBound = true;
+
+            // Now you can safely call any public method inside TrackingService!
+            updateUIWithServiceData();
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            isBound = false;
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // final RelativeLayout wait; // indeterminate progress bar
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_pdf);
+        distanceTextView = findViewById(R.id.distance_text_view); // display distance traveled on current track
         wait = findViewById(R.id.loadingPanel);
         wait.setVisibility(View.VISIBLE);
         latNow = -1;
@@ -253,19 +283,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         //mCurrentDegree = 0f;
         wayPts = null;
         mapName = "";
-
         markCurrent = false;
-        // done in onResume!!!
-        /*try {
-            dbTrack = new DBTrackHandler(PDFActivity.this);
-            tracks = dbTrack.getTracks(mapName);
-        }catch (SQLException exc){
-            Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
-            tracks = null;
-        } catch (Exception exc) {
-            Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
-        }*/
-
         clickedWP = -1; // index of waypoint that was clicked on
         lastClickedWP = -1;
         clickedTrack = -1; // index of track that was clicked on
@@ -388,14 +406,16 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
         // SET UP LOCATION SERVICES
         try {
-            mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+            locationReceiver = new PDFActivity.LocationUpdateReceiver(); // new TrackingService
+            //mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         } catch (Exception e){
             // no gps service
             return;
         }
 
+        // TODO remove
         // UPDATE CURRENT POSITION
-        mLocationCallback = new LocationCallback() {
+        /*mLocationCallback = new LocationCallback() {
             @Override
             public void onLocationResult(LocationResult locationResult) {
                 //Log.d("LocationCallback","updating location, refreshing waypoints");
@@ -433,12 +453,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //bearing = location.getBearing(); // 0-360 degrees 0 at North
                     accuracy = location.getAccuracy();
                     // Makes top of map (north) off
-                    /*geoField = new GeomagneticField(
-                            Double.valueOf(latNow).floatValue(),
-                            Double.valueOf(longNow).floatValue(),
-                            Double.valueOf(location.getAltitude()).floatValue(),
-                            System.currentTimeMillis()
-                    );*/
+                    //geoField = new GeomagneticField(
+                    //        Double.valueOf(latNow).floatValue(),
+                    //        Double.valueOf(longNow).floatValue(),
+                    //        Double.valueOf(location.getAltitude()).floatValue(),
+                    //        System.currentTimeMillis()
+                    //);
                     //bearing += geoField.getDeclination(); // Adjust for declination - difference between magnetic north and true north. Phone returns magnetic north.
                     //bearing -= 90; // Adjust by 90 degrees. Canvas needs 0 at East, this returns 0 at North
                     //if (bearing<0) bearing = 360 + bearing;
@@ -509,14 +529,14 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                 mapIds.add(i);
                             }
                         }
-                        /*if (mapIds.size()==0){
+                        //if (mapIds.size()==0){
                             //Toast.makeText(PDFActivity.this,"No adjacent maps found to load.",Toast.LENGTH_SHORT).show();
-                        }
-                        /*else if (mapIds.size()==1){
+                        //}
+                        //else if (mapIds.size()==1){
                             // Only one map found that contains the current location. Load it.
-                            loadNewMap(maps, mapIds.get(0));
-                            Toast.makeText(PDFActivity.this,"Now showing adjacent map.",Toast.LENGTH_SHORT).show();
-                        }*/
+                            //loadNewMap(maps, mapIds.get(0));
+                            //Toast.makeText(PDFActivity.this,"Now showing adjacent map.",Toast.LENGTH_SHORT).show();
+                        //}
                         if (!mapIds.isEmpty()) {
                             // Several maps found. Display button and menu to load new map.
                             //Toast.makeText(PDFActivity.this,"Several adjacent maps are available",Toast.LENGTH_SHORT).show();
@@ -552,7 +572,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     }
                 }
             }
-        };
+        };*/
+
         setupColorsMoveIcon();
         setupPDFView();
     }
@@ -1137,13 +1158,14 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                     lineColor = cyanLine;
                                     break;
                             }
+
                             // Add to the current track's path with current location if on map
                             if (latBefore != -1 && currentTrackID != -1 && t == currentTrackID &&
                                     (latNow >= lat1 && latNow <= lat2) &&
                                     (longNow >= long1 && longNow <= long2)) {
                                 currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
                                 // Save new line segment in database
-                                dbTrack.updateTrack(currentTrack);
+                            //    dbTrack.updateTrack(currentTrack);// move to LocationUpdateReceiver
                             }
                             // Draw all tracks
                             List<TrackSegment> segments = currentTrack.getTrackSegments();
@@ -1769,7 +1791,18 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     @Override
     protected void onResume() {
         super.onResume();
-        startLocationUpdates();
+
+        // Start Location Services Receiver
+        // Register receiver when UI is visible
+        IntentFilter filter = new IntentFilter("ACTION_LOCATION_UPDATE");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+ requires specifying export flags for security
+            registerReceiver(locationReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(locationReceiver, filter);
+        }
+        // TODO remove
+        //startLocationUpdates();
 
         // read user preferences from DBHandler SETTINGS_TABLE
         // read waypoints and tracks for this map
@@ -1859,7 +1892,13 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             stateShowTracks = 1;
         else
             stateShowTracks = 0;
-        stopLocationUpdates();
+        // Location Service
+        // Unregister to prevent memory leaks when app is in background
+        unregisterReceiver(locationReceiver);
+        // TODO remove
+        // Location Service
+        // Unregister to prevent memory leaks when app is in background
+        //stopLocationUpdates();
         //Log.d("PDFActivity:onPause","close dbWayPtHandler, stop location updates");
         db.close();
         db2.close();
@@ -1871,12 +1910,200 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        // 2. Bind to the service when the activity becomes visible
+        Intent intent = new Intent(this, TrackingService.class);
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
+        // Unbind Location Service when the activity is no longer visible to prevent memory leaks
+        if (isBound) {
+            unbindService(serviceConnection);
+            isBound = false;
+        }
     }
 
     //  LOCATION UPDATES
-    private void startLocationUpdates() {
+    private void updateUIWithServiceData() {
+        // update tracking distance for current track
+        if (isBound && trackingService != null) {
+            float distance = trackingService.getTotalDistance();
+            distanceTextView.setText("Distance from Service: " + distance + "m");
+        }
+    }
+
+    // Add this inside SecondActivity.java just like you did in MainActivity
+    private class LocationUpdateReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null && "ACTION_LOCATION_UPDATE".equals(intent.getAction())) {
+                // save last location so we can see how much they moved
+                latBefore = latNow;
+                longBefore = longNow;
+
+                latNow = intent.getDoubleExtra("extra_latitude", 0.0);
+                longNow = intent.getDoubleExtra("extra_longitude", 0.0);
+                accuracy = intent.getFloatExtra("extra_accuracy", 0.0f);
+
+                // Add to the current track's path with current location if on map
+                Track currentTrack = new Track();
+                if (latBefore != -1 && currentTrackID != -1 &&
+                        (latNow >= lat1 && latNow <= lat2) &&
+                        (longNow >= long1 && longNow <= long2)) {
+                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
+                    // Save new line segment in database
+                    dbTrack.updateTrack(currentTrack);
+                }
+
+                // **Debug** make it simulate user movement to draw a track
+                if (latBefore != -1){
+                    Random rand = new Random();
+                    int randomInt = 1;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                        randomInt = rand.nextInt(1,9);
+                    }
+                    if (randomInt > 7) randomInt = randomInt * -1;
+                    double r = (double)randomInt / 10000.0;
+                    latNow =  latBefore + r;
+                    randomInt = 1;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                        randomInt = rand.nextInt(1,9);
+                    }
+                    if (randomInt > 7) randomInt = randomInt * -1;
+                    r = (double)randomInt / 10000.0;
+                    longNow = longBefore + r;
+                }
+
+                //bearing = location.getBearing(); // 0-360 degrees 0 at North
+
+                // Makes top of map (north) off
+                    /*geoField = new GeomagneticField(
+                            Double.valueOf(latNow).floatValue(),
+                            Double.valueOf(longNow).floatValue(),
+                            Double.valueOf(location.getAltitude()).floatValue(),
+                            System.currentTimeMillis()
+                    );*/
+                //bearing += geoField.getDeclination(); // Adjust for declination - difference between magnetic north and true north. Phone returns magnetic north.
+                //bearing -= 90; // Adjust by 90 degrees. Canvas needs 0 at East, this returns 0 at North
+                //if (bearing<0) bearing = 360 + bearing;
+
+                // debug
+                //TextView bTxt = (TextView)findViewById(R.id.debug);
+                //bTxt.setText(Float.toString(bearing)+"  adjust: "+Float.toString((geoField.getDeclination()))+ "  bear: "+Float.toString(location.getBearing()));
+
+                pdfView.invalidate();
+                //
+                // Load Adjacent Maps?
+                // check if we need to display load adjacent maps button because current location is within 1/4 mile of other maps
+                //
+
+                // OLD WAY when current location goes off edge. Problem USGS and FS maps have a margin CPW maps do not. Show when close to edge.
+                //double percentX = 0.13;
+                //double percentY = 0.10;
+                //******************************
+                // DEBUG force current location
+                //******************************
+                //latNow = lat2 - latDiff*percentY;
+                //longNow = long2 - longDiff*percentX;
+                //latNow = lat1 + latDiff*percentY;
+                //longNow = long1 + longDiff*percentX;
+                //if (loadAdjacentMaps && onMap && (latNow < (lat1 + latDiff*percentX)  || latNow > (lat2 - latDiff*percentX)  || longNow < (long1 + longDiff*percentY) || longNow > (long2 - longDiff*percentY))){
+
+                double quarterMileInDegrees = 0.00458; // 1 degree = 54.6 miles
+                if (loadAdjacentMaps &&
+                        latNow > (lat1 - quarterMileInDegrees) &&
+                        latNow < (lat2 + quarterMileInDegrees) &&
+                        longNow > (long1 - quarterMileInDegrees) &&
+                        longNow < (long2 + quarterMileInDegrees)){
+                    // Get list of all available maps and see if the current location is on or within a 1/4 mile of one or more of them
+                    ArrayList<Integer> mapIds = new ArrayList<>();// PDF maps that the current location is on
+                    if (maps == null) return;
+                    for (int i = 0; i < maps.size(); i++) {
+                        PDFMap map = maps.get(i);
+                        if (map.getName().equals(mapName)) continue; // don't list current map
+                        String bounds = map.getBounds(); // lat1 long1 lat2 long1 lat2 long2 lat1 long2
+                        if (bounds == null || bounds.isEmpty())
+                            return; // it will be 0 length if it is importing
+                        bounds = bounds.trim(); // remove leading and trailing spaces
+
+                        // Get Latitude, Longitude bounds.
+                        // aLat1 and aLong1 are the smallest values SW corner
+                        // aLat2 and aLong2 are the largest NE corner
+                        String[] arrLatLong = bounds.split(" ");
+                        // convert strings to double
+                        Double[] LatLong = new Double[arrLatLong.length];
+                        for (int l = 0; l < arrLatLong.length; l++) {
+                            LatLong[l] = Double.parseDouble(arrLatLong[l]);
+                        }
+                        // Find the smallest and largest values
+                        double aLat1 = LatLong[0];
+                        double aLong1 = LatLong[1];
+                        double aLat2 = LatLong[0];
+                        double aLong2 = LatLong[1];
+                        for (int l = 0; l < LatLong.length; l = l + 2) {
+                            if (LatLong[l] < aLat1) aLat1 = LatLong[l];
+                            if (LatLong[l] > aLat2) aLat2 = LatLong[l];
+                            if (LatLong[l + 1] < aLong1) aLong1 = LatLong[l + 1];
+                            if (LatLong[l + 1] > aLong2) aLong2 = LatLong[l + 1];
+                        }
+
+                        // Is current location on this map? Add it to mapIds (array of maps that contain the current location)
+                        // On map
+                        if (latNow >= aLat1 && latNow <= aLat2 && longNow >= aLong1 && longNow <= aLong2) {
+                            mapIds.add(i);
+                        }
+                    }
+                        /*if (mapIds.size()==0){
+                            //Toast.makeText(PDFActivity.this,"No adjacent maps found to load.",Toast.LENGTH_SHORT).show();
+                        }
+                        /*else if (mapIds.size()==1){
+                            // Only one map found that contains the current location. Load it.
+                            loadNewMap(maps, mapIds.get(0));
+                            Toast.makeText(PDFActivity.this,"Now showing adjacent map.",Toast.LENGTH_SHORT).show();
+                        }*/
+                    if (!mapIds.isEmpty()) {
+                        // Several maps found. Display button and menu to load new map.
+                        //Toast.makeText(PDFActivity.this,"Several adjacent maps are available",Toast.LENGTH_SHORT).show();
+                        menuBtn.setVisibility(View.VISIBLE);
+                        adjacentMapsBtnShowing = true; // if they don't click on the button but click elsewhere, use this to hide the menuBtn in pdfView tap event.
+                        menuBtn.setOnClickListener(view -> {
+                            PopupMenu popup = new PopupMenu(PDFActivity.this, menuBtn);
+                            popup.getMenuInflater().inflate(R.menu.adjacent_maps_menu, popup.getMenu());
+                            for (int j = 0; j < mapIds.size(); j++) {
+                                // add(groupId, itemId, order, title) Pass the index into maps array as the itemId
+                                popup.getMenu().add(1, mapIds.get(j), j + 1, maps.get(mapIds.get(j)).getName());
+                            }
+
+                            popup.show();
+                            popup.setOnMenuItemClickListener(item -> {
+                                // load the user selected map
+                                int i1 = item.getItemId();
+                                loadNewMap(maps, i1);
+                                return true;
+                            });
+                            // hide the Load Adjacent Maps button
+                            popup.setOnDismissListener(menu -> {
+                                Button menuBtn = findViewById(R.id.load_adjacent_maps);
+                                menuBtn.setVisibility(View.GONE);
+                                adjacentMapsBtnShowing = false;
+                            });
+                        });
+                    }
+                }
+                else{
+                    menuBtn.setVisibility(View.GONE);
+                    adjacentMapsBtnShowing = false;
+                }
+            }
+        }
+    }
+
+    // TODO remove
+    /*private void startLocationUpdates() {
         LocationRequest mLocationRequest;
         if (Build.VERSION.SDK_INT >= 31){
             mLocationRequest = new LocationRequest.Builder(1000)
@@ -1902,16 +2129,17 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.getMainLooper());
             }
         }
-    }
+    }*/
 
-    private void stopLocationUpdates() {
+    // TODO remove
+    /*private void stopLocationUpdates() {
         if ((ContextCompat.checkSelfPermission(PDFActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) &&
                 (ContextCompat.checkSelfPermission(PDFActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
             if (mFusedLocationClient != null) {
                 mFusedLocationClient.removeLocationUpdates(mLocationCallback);
             }
         }
-    }
+    }*/
 
 
     // -------------------------------------------------
@@ -2318,12 +2546,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             }
             // turn on add track icon
             else {
-                //TODO check for FOREGROUND_SERVICE && FOREGROUND_SERVICE_LOCATION instead of ACCESS_FINE_LOCATION
-                if ((ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
-
-                } else {
-                    Toast.makeText(PDFActivity.this, "Tracking requires permission to run in the background.", Toast.LENGTH_LONG).show();
-                }
                 int num = findAUniqueTrackName();
                 tracks.add(mapName,"Track "+num, "cyan", null);
                 currentTrackID = tracks.size()-1;

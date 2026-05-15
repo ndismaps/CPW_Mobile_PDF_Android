@@ -28,7 +28,7 @@
       android:indeterminate="true" />
   <!--/RelativeLayout-->
 
-  <!-- Must have width and height set to wrap_content or it will not show up on top -->
+  <!-- Must have width and height set to wrap_content, or it will not show up on top -->
   <!-- Current Position -->
   <TextView
       android:id="@+id/cur_pos"
@@ -72,4 +72,13 @@
       android:text="@string/load_adjacent_maps"
       android:textColor="#212121"
       android:visibility="gone" />
+  <TextView
+      android:id="@+id/distance_text_view"
+      android:layout_width="100dp"
+      android:layout_height="20dp"
+      android:layout_alignParentBottom="true"
+      android:layout_alignParentEnd="true"
+      android:text="Distance traveled"
+      android:textColor="#212121"/>
+
 </RelativeLayout>

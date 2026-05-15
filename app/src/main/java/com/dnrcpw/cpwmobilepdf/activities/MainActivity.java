@@ -335,8 +335,8 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent != null && "ACTION_LOCATION_UPDATE".equals(intent.getAction())) {
-                double latNow = intent.getDoubleExtra("extra_latitude", 0.0);
-                double longNow = intent.getDoubleExtra("extra_longitude", 0.0);
+                latNow = intent.getDoubleExtra("extra_latitude", 0.0);
+                longNow = intent.getDoubleExtra("extra_longitude", 0.0);
                 float accuracy = intent.getFloatExtra("extra_accuracy", 0.0f); // Read accuracy
 
                 try {
