@@ -22,7 +22,11 @@ import com.dnrcpw.cpwmobilepdf.data.DBTrackHandler;
 import com.dnrcpw.cpwmobilepdf.model.Track;
 import com.dnrcpw.cpwmobilepdf.model.Tracks;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public class EditTrackActivity extends AppCompatActivity{
+    private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // for database calls
     EditText editTxt;
     TextView timeStamp;
     ImageView trackImg;
@@ -33,9 +37,8 @@ public class EditTrackActivity extends AppCompatActivity{
     String path;
     String bounds;
     String viewPort;
-    //private DBWayPtHandler db = DBWayPtHandler.getInstance(this);
     private DBTrackHandler dbTrackHandler;
-    private int id;
+    int id;
     Track track;
     //boolean landscape;
     boolean changed=false;
@@ -72,13 +75,13 @@ public class EditTrackActivity extends AppCompatActivity{
             Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
 
         }catch (Exception exc){
-            Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database, other exception. "+exc.getMessage(), Toast.LENGTH_LONG).show();
 
         }
         try {
             track = tracks.get(id);
         }catch (Exception e){
-            Toast.makeText(EditTrackActivity.this,"That track was not found in the database. Error: "+e.getMessage(),Toast.LENGTH_LONG);
+            Toast.makeText(EditTrackActivity.this,"That track was not found in the database. Error: "+e.getMessage(),Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -87,6 +90,8 @@ public class EditTrackActivity extends AppCompatActivity{
         editTxt = findViewById(R.id.trackName);
         editTxt.setText(track.getDesc());
         trackImg = findViewById(R.id.track_img);
+        timeStamp = findViewById(R.id.trackTime);
+        timeStamp.setText(track.getTime());
         trackColorGrp = findViewById(R.id.trackColor);
         String trackColor = track.getColorName();
         cyanBtn = findViewById(R.id.cyanTrack);
@@ -157,7 +162,7 @@ public class EditTrackActivity extends AppCompatActivity{
                 case DialogInterface.BUTTON_POSITIVE:
                     //'SAVE' button clicked, save then exit
                     String name = editTxt.getText().toString();
-                    if (name.equals("")) {
+                    if (name.isEmpty()) {
                         Toast.makeText(EditTrackActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
                     } else {
                         track.setDesc(name);
@@ -202,7 +207,7 @@ public class EditTrackActivity extends AppCompatActivity{
         } else if (item.getItemId() == R.id.save) {
             // rename map
             String name = editTxt.getText().toString();
-            if (name.equals("")) {
+            if (name.isEmpty()) {
                 Toast.makeText(EditTrackActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
             } else {
                 track.setDesc(name);
@@ -229,6 +234,11 @@ public class EditTrackActivity extends AppCompatActivity{
         }
     }
 
+    @Override
+    protected void onResume(){
+        super.onResume();
+
+    }
     @Override
     protected void onStop(){
         super.onStop();

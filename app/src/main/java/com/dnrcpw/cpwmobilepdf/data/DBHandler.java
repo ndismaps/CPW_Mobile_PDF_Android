@@ -20,9 +20,10 @@ import java.util.Locale;
  */
 
 public class DBHandler extends SQLiteOpenHelper {
+    private static DBHandler sInstance; // used by every activity. Application context.
     private static final int DATABASE_VERSION = 3;
     private static final String DATABASE_NAME = "mapsInfo";
-    private final Context context;
+    private final Context context = null;
     // Maps table name
     private static final String TABLE_MAPS = "maps";
     // Maps Table Column Names
@@ -47,9 +48,20 @@ public class DBHandler extends SQLiteOpenHelper {
     private static final String KEY_SHOW_TRACKS="show_tracks"; // turn on or off showing tracks for all maps. Valid values: "1" or "0"
     private static final String KEY_SHOW_ALL_WAYPOINT_LABELS="show_all_waypoints"; //  turn on or off showing all waypoint labels for all maps. Valid values: "1" or "0"
 
-    public DBHandler(Context c) throws SQLException {
+    public static synchronized DBHandler getInstance(Context context) throws SQLException {
+        // 5-18-26 Add sInstance
+        // Use the application context, which will ensure that you
+        // don't accidentally leak an Activity's context.
+        // See this article for more information: http://bit.ly/6LRzfx
+        if (sInstance == null) {
+            sInstance = new DBHandler(context.getApplicationContext());
+            context = context;
+        }
+        return sInstance;
+    }
+    private DBHandler(Context c) throws SQLException {
         super(c, DATABASE_NAME, null, DATABASE_VERSION);
-        this.context = c;
+        //this.context = c;
     }
 
     @Override
@@ -69,7 +81,9 @@ public class DBHandler extends SQLiteOpenHelper {
                      String selectQuery = "SELECT * FROM " + TABLE_MAPS;
                      Cursor cursor = db1.rawQuery(selectQuery, null);
                      if (cursor.getColumnCount() == 7){
-                         cursor.close();
+                         if (cursor != null) {
+                             cursor.close();
+                         }
                          db1.execSQL("ALTER TABLE " + TABLE_MAPS + " ADD COLUMN " + KEY_FILESIZE + " TEXT");
                          db1.execSQL("ALTER TABLE " + TABLE_MAPS + " ADD COLUMN " + KEY_DISTTOMAP + " TEXT");
                          db1.execSQL("UPDATE " + TABLE_MAPS + " SET " + KEY_FILESIZE + " = ''");
@@ -170,7 +184,9 @@ public class DBHandler extends SQLiteOpenHelper {
                 mapList.add(map);
             } while (cursor.moveToNext());
         }
-        cursor.close();
+        if (cursor != null) {
+            cursor.close();
+        }
 
         // remove database and add again
         deleteMapsTable(db1);
@@ -218,7 +234,9 @@ public class DBHandler extends SQLiteOpenHelper {
             if (cursor.getColumnCount() > 3) show_waypoints = cursor.getString(3);
             if (cursor.getColumnCount() > 4) show_all_waypoint_labels = cursor.getString(4);
         }
-        cursor.close();
+        if (cursor != null) {
+            cursor.close();
+        }
         // delete maps table
         db1.execSQL("DROP TABLE IF EXISTS "+ TABLE_SETTINGS);
         // Create settings table again
@@ -268,7 +286,9 @@ public class DBHandler extends SQLiteOpenHelper {
                     cursor.getString(4),cursor.getString(5), cursor.getString(6),
                     cursor.getString (7), cursor.getString(8),cursor.getString(9));
             map.setId(Integer.parseInt(cursor.getString(0)));
-            cursor.close();
+            if (cursor != null) {
+                cursor.close();
+            }
             return map;
         }
         return null;
@@ -327,7 +347,9 @@ public class DBHandler extends SQLiteOpenHelper {
                 mapList.add(map);
             } while (cursor.moveToNext());
         }
-        cursor.close();
+        if (cursor != null) {
+            cursor.close();
+        }
         // return map list
         return mapList;
     }
@@ -381,7 +403,9 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             load_adj_maps = Integer.parseInt(cursor.getString(0));
-            cursor.close();
+            if (cursor != null) {
+                cursor.close();
+            }
             return load_adj_maps;
         }
         else {
@@ -410,7 +434,9 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             show = Integer.parseInt(cursor.getString(0));
-            cursor.close();
+            if (cursor != null) {
+                cursor.close();
+            }
             return show;
         }
         else {
@@ -439,7 +465,9 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             show = Integer.parseInt(cursor.getString(0));
-            cursor.close();
+            if (cursor != null) {
+                cursor.close();
+            }
             return show;
         }
         else {
@@ -468,7 +496,9 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             show = Integer.parseInt(cursor.getString(0));
-            cursor.close();
+            if (cursor != null) {
+                cursor.close();
+            }
             return show;
         }
         else {
@@ -499,7 +529,9 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             order = cursor.getString(0);
-            cursor.close();
+            if (cursor != null) {
+                cursor.close();
+            }
             return order;
         }
         else {

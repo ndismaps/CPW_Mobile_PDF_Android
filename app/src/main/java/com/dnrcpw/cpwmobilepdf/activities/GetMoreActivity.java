@@ -19,6 +19,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.dnrcpw.cpwmobilepdf.R;
+import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.model.PDFMap;
 
 import java.io.File;
@@ -27,9 +28,12 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class GetMoreActivity extends AppCompatActivity {
     // final String TAG = "DEBUG";
+    private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor();
     Button downloadsBtn;
     // link to USFS webapp to download PDFs https://www.arcgis.com/apps/webappviewer/index.html?id=b70e11a68aac46b3a5bd911b82b53c1e
     // USFS https://data.fs.usda.gov/geodata/rastergateway/states-regions/states.php
@@ -148,29 +152,34 @@ public class GetMoreActivity extends AppCompatActivity {
                         Toast.makeText(GetMoreActivity.this, getResources().getString(R.string.createFile), Toast.LENGTH_LONG).show();
                     }
                     PDFMap map = new PDFMap(newPath, "", "", "", null, getResources().getString(R.string.loading), "", "", "none");
+                    final PDFMap map2 = map.importMap(GetMoreActivity.this);
+                    dbExecutor.execute(() -> {
+                        Integer index = DBHandler.getInstance(GetMoreActivity.this).addMap(map2);
+                        map2.setId(index);
+                        DBHandler.getInstance(GetMoreActivity.this).updateMap(map2);
+                        runOnUiThread(() -> {
 
-                    String result = map.importMap(GetMoreActivity.this);
-                    if (!result.equals(getResources().getString(R.string.importdone))) {
+                        });
+                    });
+
+
+                    if (map2.getName().contains("Import Failed")) { //   !result.equals(getResources().getString(R.string.importdone))) {
                         toast.cancel();
-                        Toast.makeText(GetMoreActivity.this, result, Toast.LENGTH_LONG).show();
-                        //db.deleteMap(map);
-                        //db.close();
+                        Toast.makeText(GetMoreActivity.this, map2.getName(), Toast.LENGTH_LONG).show();
                     }
                     // Map Import Success
                     else {
                         // Display message and load map
                         toast.cancel();
                         Toast.makeText(GetMoreActivity.this, getResources().getString(R.string.importdonemsg), Toast.LENGTH_SHORT).show();
-                        //db.updateMap(map);
-                        //db.close();
                         // open map
                         Intent i = new Intent(GetMoreActivity.this, PDFActivity.class);
                         //i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                        i.putExtra("PATH", map.getPath());
-                        i.putExtra("NAME", map.getName());
-                        i.putExtra("BOUNDS", map.getBounds());
-                        i.putExtra("MEDIABOX", map.getMediabox());
-                        i.putExtra("VIEWPORT", map.getViewport());
+                        i.putExtra("PATH", map2.getPath());
+                        i.putExtra("NAME", map2.getName());
+                        i.putExtra("BOUNDS", map2.getBounds());
+                        i.putExtra("MEDIABOX", map2.getMediabox());
+                        i.putExtra("VIEWPORT", map2.getViewport());
                         startActivity(i);
                     }
                 }

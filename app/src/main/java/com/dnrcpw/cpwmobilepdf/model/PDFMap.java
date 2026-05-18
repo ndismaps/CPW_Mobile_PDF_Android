@@ -23,6 +23,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Created by tammy on 12/11/2017.
@@ -55,7 +57,7 @@ public class PDFMap {
             this.miles = Double.parseDouble(distToMap);
     }
 
-    public String importMap(Context c) {
+    public PDFMap importMap(Context c) {
         // preform background computation to read lat long, page size, boundaries from pdf
         File file;
         PDFMap pdfMap = this;
@@ -98,7 +100,8 @@ public class PDFMap {
             PdfDictionary page = reader.getPageN(1);
             if (page == null) {
                 reader.close();
-                return ("Import Failed");
+                pdfMap.setName("Import Failed");
+                return pdfMap; //("Import Failed");
             }
             PdfArray vp = page.getAsArray(PdfName.VP);
             // If this is PDF ISO standard file and not a GeoPDF check the version number
@@ -106,7 +109,8 @@ public class PDFMap {
                 if (Character.getNumericValue(reader.getPdfVersion()) < 6) {
                     // Version less than PDF 1.6
                     reader.close();
-                    return("Not Georeferenced");
+                    pdfMap.setName("Import Failed - Not Georeferenced");
+                    return pdfMap; //("Not Georeferenced");
                 }
             }
 
@@ -116,7 +120,8 @@ public class PDFMap {
             mediabox = page.getAsArray(PdfName.MEDIABOX).toString(); // works [ 0 0 792 1224]
             if (mediabox.equals("")) {
                 reader.close();
-                return ("Import Failed");
+                pdfMap.setName("Import Failed");
+                return pdfMap; //("Import Failed");
             }
             mediabox = mediabox.substring(1,mediabox.length()-1).trim();
             mediabox = mediabox.replaceAll(",","");
@@ -158,12 +163,14 @@ public class PDFMap {
                 PdfDictionary vpDict = vp.getAsDict(id);
                 if (vpDict == null) {
                     reader.close();
-                    return ("Import Failed");
+                    pdfMap.setName("Import Failed");
+                    return pdfMap; //("Import Failed");
                 }
                 PdfArray bbox = vpDict.getAsArray(PdfName.BBOX);
                 if (bbox == null) {
                     reader.close();
-                    return ("Import Failed");
+                    pdfMap.setName("Import Failed");
+                    return pdfMap; //("Import Failed");
                 }
                 viewport = bbox.toString().trim();
                 viewport = viewport.substring(1, viewport.length() - 1);
@@ -219,7 +226,8 @@ public class PDFMap {
                 bounds = measure.get(PdfName.GPTS).toString();
                 if (bounds.equals("")) {
                     reader.close();
-                    return ("Import Failed");
+                    pdfMap.setName("Import Failed");
+                    return pdfMap; //("Import Failed");
                 }
                 bounds = bounds.trim();
                 bounds = bounds.substring(1, bounds.length() - 1);
@@ -273,7 +281,8 @@ public class PDFMap {
                 PdfArray lgiDictArray = page.getAsArray(lgiDict);
                 if (lgiDictArray == null) {
                     reader.close();
-                    return "Import Failed - not georeferenced? No LGIDict dictionary";
+                    pdfMap.setName("Import Failed - not georeferenced? No LGIDict dictionary");
+                    return pdfMap; //"Import Failed - not georeferenced? No LGIDict dictionary";
                 }
                 int max=0;
                 int id=0;
@@ -310,12 +319,14 @@ public class PDFMap {
                     projType = projDict.getAsString(projectionType);
                     if (!projType.toString().toLowerCase(Locale.US).equals("ut")){
                         reader.close();
-                        return "Import Failed - unknown projection: "+projType.toString();
+                        pdfMap.setName("Import Failed - unknown projection: "+projType.toString());
+                        return pdfMap; //"Import Failed - unknown projection: "+projType.toString();
                     }
                     units = projDict.getAsString(PdfNameUnits);
                     if (!units.toString().toLowerCase(Locale.US).equals("m")) {
                         reader.close();
-                        return "Import Failed - unknown unit: "+units.toString();
+                        pdfMap.setName("Import Failed - unknown unit: "+units.toString());
+                        return pdfMap; //"Import Failed - unknown unit: "+units.toString();
                     }
                     PdfNumber z = projDict.getAsNumber(PdfNameZone);
                     if (z != null)
@@ -325,12 +336,14 @@ public class PDFMap {
                     projType = displayDict.getAsString(projectionType);
                     if (!projType.toString().toLowerCase(Locale.US).equals("ut")) {
                         reader.close();
-                        return "Import Failed - unknown projection: "+projType.toString();
+                        pdfMap.name = "Import Failed - unknown projection: "+projType.toString();
+                        return pdfMap; //"Import Failed - unknown projection: "+projType.toString();
                     }
                     units = displayDict.getAsString(PdfNameUnits);
                     if (!units.toString().toLowerCase(Locale.US).equals("m")) {
                         reader.close();
-                        return "Import Failed - unknown unit: "+units.toString();
+                        pdfMap.name = "Import Failed - unknown unit: "+units.toString();
+                        return pdfMap; //"Import Failed - unknown unit: "+units.toString();
                     }
                     PdfNumber z = displayDict.getAsNumber(PdfNameZone);
                     if (z != null)
@@ -375,7 +388,8 @@ public class PDFMap {
             }
             reader.close();
         }catch(Exception ex){
-            return ("Import Failed");
+            pdfMap.name = "Import Failed";
+            return pdfMap;
         }
 
         // ---------------------
@@ -430,10 +444,11 @@ public class PDFMap {
             pdfMap.setMediabox(mediabox);
             pdfMap.setBounds(bounds);
             pdfMap.setMapOrientation("none");
-            DBHandler db = new DBHandler(c);
-       //     db.updateMap(pdfMap);
-            Integer index = db.addMap(pdfMap);
-            pdfMap.setId(index);
+
+            // move to GetMoreActivity
+                //DBHandler db = new DBHandler(c);
+                //Integer index = db.addMap(pdfMap);
+                //pdfMap.setId(index);
 
             // Save thumbnail to a file in app directory (/data/data/com/dnrcpw/cpwmobilepdf/files), save the path to it.
             File img;
@@ -461,15 +476,16 @@ public class PDFMap {
                 pdfMap.setThumbnail(null);
             }
             // update the thumbnail
-            db.updateMap(pdfMap);
-            db.close();
+            //db.updateMap(pdfMap);
+            //db.close();
             fd.close(); // thumbnail file descriptor
         } catch (IOException | SQLException ex) {
             ex.printStackTrace();
             pdfMap.setName("deleting...");
-            return "Import Failed " + ex.getMessage();
+            pdfMap.setName("Import Failed " + ex.getMessage());
+            return pdfMap; //"Import Failed " + ex.getMessage();
         }
-        return c.getResources().getString(R.string.importdone); //"Import Done";
+        return pdfMap; //c.getResources().getString(R.string.importdone); //"Import Done";
     }
 
     private double[] UTMtoLL(double f, double f1, int j) {

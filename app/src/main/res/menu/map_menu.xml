@@ -54,6 +54,7 @@
     <item
         android:id="@+id/action_showTracks"
         android:checkable="true"
+        android:icon="@drawable/ic_gray_track"
         android:title="@string/showTracks"
         app:showAsAction="never" />
     <item

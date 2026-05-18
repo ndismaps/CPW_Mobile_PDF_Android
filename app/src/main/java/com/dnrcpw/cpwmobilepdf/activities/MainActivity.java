@@ -41,6 +41,7 @@ import androidx.core.content.ContextCompat;
 import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.data.DBWayPtHandler;
+import com.dnrcpw.cpwmobilepdf.model.PDFMap;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -61,12 +62,15 @@ import com.google.android.play.core.install.model.UpdateAvailability;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Locale;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 
 public class MainActivity extends AppCompatActivity implements AdapterView.OnItemSelectedListener {
-    // Displays list of imported pdf maps and an add more button. When an item is clicked, it loads the map.
+    // Displays list of imported PDF maps and an add more button. When an item is clicked, it loads the map.
+    private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // 5-18-26
     private ListView lv;
     private CustomAdapter myAdapter; // list of imported pdf maps
-    private DBHandler dbHandler;
+    //private DBHandler dbHandler;
     private DBWayPtHandler dbWayPtHandler;
     //private String TAG = "MainActivity";
     boolean sortFlag = true;
@@ -374,68 +378,75 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                             // Update distance to map.
                             myAdapter.getDistToMap();
 
-                            String sort = dbHandler.getMapSort();
-                            if ((sort.equals("proximity") || sort.equals("proximityrev")) && sortFlag) {
-                                if (sort.equals("proximity"))
-                                    myAdapter.SortByProximity();
-                                else
-                                    myAdapter.SortByProximityReverse();
-                                myAdapter.notifyDataSetChanged();
-
-                                // Refresh all data in visible table cells
-                                for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
-                                    View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
-                                    if (v == null)
-                                        continue;
-
-                                    ImageView img = v.findViewById(R.id.pdfImage);
-                                    try {
-                                        File imgFile = new File(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getThumbnail());
-                                        Bitmap myBitmap;
-                                        myBitmap = BitmapFactory.decodeFile(imgFile.getAbsolutePath());
-                                        if (myBitmap != null)
-                                            img.setImageBitmap(myBitmap);
+                            // Fetch the sort preference on a background thread
+                            dbExecutor.execute(() -> {
+                                String sort = DBHandler.getInstance(MainActivity.this).getMapSort();
+                                // Switch to main thread to push the data to your UI
+                                runOnUiThread(() -> {
+                                    //String sort = dbHandler.getMapSort();
+                                    if ((sort.equals("proximity") || sort.equals("proximityrev")) && sortFlag) {
+                                        if (sort.equals("proximity"))
+                                            myAdapter.SortByProximity();
                                         else
-                                            img.setImageResource(R.drawable.pdf_icon);
-                                    } catch (Exception ex) {
-                                        Toast.makeText(MainActivity.this, "Problem reading thumbnail.", Toast.LENGTH_LONG).show();
-                                        img.setImageResource(R.drawable.pdf_icon);
-                                    }
+                                            myAdapter.SortByProximityReverse();
+                                        myAdapter.notifyDataSetChanged();
 
-                                    TextView name = v.findViewById(R.id.nameTxt);
-                                    name.setText(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getName());
-                                    TextView fileSize = v.findViewById(R.id.fileSizeTxt);
-                                    fileSize.setText(myAdapter.pdfMaps.get(i).getFileSize());
-                                    TextView distToMap = v.findViewById(R.id.distToMapTxt);
-                                    String dist = myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getDistToMap();
-                                    if (dist.equals("onmap")) {
-                                        v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
-                                        distToMap.setText("");
-                                    } else {
-                                        v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
-                                        distToMap.setText(dist);
+                                        // Refresh all data in visible table cells
+                                        for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
+                                            View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
+                                            if (v == null)
+                                                continue;
+
+                                            ImageView img = v.findViewById(R.id.pdfImage);
+                                            try {
+                                                File imgFile = new File(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getThumbnail());
+                                                Bitmap myBitmap;
+                                                myBitmap = BitmapFactory.decodeFile(imgFile.getAbsolutePath());
+                                                if (myBitmap != null)
+                                                    img.setImageBitmap(myBitmap);
+                                                else
+                                                    img.setImageResource(R.drawable.pdf_icon);
+                                            } catch (Exception ex) {
+                                                Toast.makeText(MainActivity.this, "Problem reading thumbnail.", Toast.LENGTH_LONG).show();
+                                                img.setImageResource(R.drawable.pdf_icon);
+                                            }
+
+                                            TextView name = v.findViewById(R.id.nameTxt);
+                                            name.setText(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getName());
+                                            TextView fileSize = v.findViewById(R.id.fileSizeTxt);
+                                            fileSize.setText(myAdapter.pdfMaps.get(i).getFileSize());
+                                            TextView distToMap = v.findViewById(R.id.distToMapTxt);
+                                            String dist = myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getDistToMap();
+                                            if (dist.equals("onmap")) {
+                                                v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
+                                                distToMap.setText("");
+                                            } else {
+                                                v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
+                                                distToMap.setText(dist);
+                                            }
+                                        }
                                     }
-                                }
-                            }
-                            // Refresh only dist to map
-                            else if (sortFlag) {
-                                // Refresh visible table cells
-                                for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
-                                    View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
-                                    if (v == null)
-                                        continue;
-                                    TextView distToMap = v.findViewById(R.id.distToMapTxt);
-                                    String dist = myAdapter.pdfMaps.get(i).getDistToMap();
-                                    //Log.d("Distance", "accuracy:"+accuracy+"  "+myAdapter.pdfMaps.get(i).getName()+" "+dist);
-                                    if (dist.equals("onmap")) {
-                                        v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
-                                        distToMap.setText("");
-                                    } else {
-                                        v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
-                                        distToMap.setText(dist);
+                                    // Refresh only dist to map
+                                    else if (sortFlag) {
+                                        // Refresh visible table cells
+                                        for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
+                                            View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
+                                            if (v == null)
+                                                continue;
+                                            TextView distToMap = v.findViewById(R.id.distToMapTxt);
+                                            String dist = myAdapter.pdfMaps.get(i).getDistToMap();
+                                            //Log.d("Distance", "accuracy:"+accuracy+"  "+myAdapter.pdfMaps.get(i).getName()+" "+dist);
+                                            if (dist.equals("onmap")) {
+                                                v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
+                                                distToMap.setText("");
+                                            } else {
+                                                v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
+                                                distToMap.setText(dist);
+                                            }
+                                        }
                                     }
-                                }
-                            }
+                                });
+                            });
                         }
 
                         // save current location so we can see how much they moved
@@ -814,7 +825,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         super.onResume();
         try {
             try {
-                dbHandler = new DBHandler(MainActivity.this);
+                //dbHandler = new DBHandler(MainActivity.this);
                 dbWayPtHandler = new DBWayPtHandler(MainActivity.this);
             } catch (SQLException e){
                 Toast.makeText(MainActivity.this,getResources().getString(R.string.problemReadingDatabase),Toast.LENGTH_LONG).show();
@@ -895,7 +906,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 stopLocationUpdates();
             }*/
 
-            dbHandler.close();
+            //dbHandler.close();
             dbWayPtHandler.close();
         } catch(Exception tr) {
             Log.e("Main",tr.getMessage());
@@ -918,32 +929,83 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     //--------------------
     private void fillList() {
         // GET THE LIST FROM THE DATABASE
-        try {
+
             /* force this file to push to master2 */
-            myAdapter = new CustomAdapter(MainActivity.this, dbHandler.getAllMaps(), dbHandler, dbWayPtHandler);
-        } catch (SQLException | NullPointerException e) {
-            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
-            builder.setTitle("Error");
-            if (e.getMessage() != null)
-                builder.setMessage("Cannot read your maps from the disk. Is the disk full? Are too many apps running? Error message: "+e.getMessage());
-            else
-                builder.setMessage("Cannot read your maps from the disk. Is the disk full? Are too many apps running?");
-            builder.setPositiveButton("CLOSE APP", new DialogInterface.OnClickListener() {
-                public void onClick(DialogInterface dialog, int which) {
-                    // send email TODO
+            // Fetch PDF maps on a background thread
+            dbExecutor.execute(() -> {
+                DBHandler db = DBHandler.getInstance(MainActivity.this);
 
-                    // Close the app
-                    System.exit(1);
-                }
-            }).show();
-            myAdapter = new CustomAdapter(MainActivity.this, new ArrayList<>(), dbHandler, dbWayPtHandler);
-        }
+                ArrayList<PDFMap> pdfMaps = db.getAllMaps();
+                String mySort = db.getMapSort();
+                // Switch to main thread to push the data to your UI
+                runOnUiThread(() -> {
+                    try {
+                        //myAdapter = new CustomAdapter(MainActivity.this, dbHandler.getAllMaps(), dbHandler, dbWayPtHandler);
+                        myAdapter = new CustomAdapter(MainActivity.this, pdfMaps, dbExecutor, dbWayPtHandler);
+                    } catch (SQLException | NullPointerException e) {
+                        AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                        builder.setTitle("Error");
+                        if (e.getMessage() != null)
+                            builder.setMessage("Cannot read your maps from the disk. Is the disk full? Are too many apps running? Error message: "+e.getMessage());
+                        else
+                            builder.setMessage("Cannot read your maps from the disk. Is the disk full? Are too many apps running?");
+                        builder.setPositiveButton("CLOSE APP", new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int which) {
+                                // send email TODO
 
-        lv = findViewById(R.id.lv);
-        lv.setAdapter(myAdapter);
+                                // Close the app
+                                System.exit(1);
+                            }
+                        }).show();
+                        myAdapter = new CustomAdapter(MainActivity.this, new ArrayList<>(), dbExecutor, dbWayPtHandler);
+                    }
+                    lv = findViewById(R.id.lv);
+                    lv.setAdapter(myAdapter);
 
-        // Make sure all the maps in the database still exist
-        myAdapter.checkIfExists();
+                    // Make sure all the maps in the database still exist
+                    myAdapter.checkIfExists();
+
+                    // Display note if no records found
+                    showHideNoImportsMessage();
+
+                    // set selected sort by item
+                        String sort = mySort;
+
+                        //String sort = dbHandler.getMapSort();
+                        int sortID = 0;
+                        switch (sort) {
+                            case "namerev":
+                                sortID = 1;
+                                break;
+                            case "date":
+                                sortID = 2;
+                                break;
+                            case "daterev":
+                                sortID = 3;
+                                break;
+                            case "size":
+                                sortID = 4;
+                                break;
+                            case "sizerev":
+                                sortID = 5;
+                                break;
+                            case "proximity":
+                                sortID = 6;
+                                break;
+                            case "proximityrev":
+                                sortID = 7;
+                                break;
+                        }
+                        sortByDropdown.setSelection(sortID, true);
+                        sortMaps(sort); // added 10-24-22 When returning from activity or paused, if setSelection was not changing anything it would not sort. Defaulted to date added sorting.
+                        // Update myAdapter list and database if import/rename/delete happened
+                        checkForActivityResult();
+                        // check if returned from another activity and change the maps list accordingly
+                        // When return from GetMoreActivity or EditMapNameActivity update maps list
+                });
+            });
+
+
 
         /*lv.setLongClickable(true);
         //registerForContextMenu(lv); // set up edit/trash context menu
@@ -978,41 +1040,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             }
         });*/
 
-        // Display note if no records found
-        showHideNoImportsMessage();
 
-        // set selected sort by item
-        String sort = dbHandler.getMapSort();
-        int sortID = 0;
-        switch (sort) {
-            case "namerev":
-                sortID = 1;
-                break;
-            case "date":
-                sortID = 2;
-                break;
-            case "daterev":
-                sortID = 3;
-                break;
-            case "size":
-                sortID = 4;
-                break;
-            case "sizerev":
-                sortID = 5;
-                break;
-            case "proximity":
-                sortID = 6;
-                break;
-            case "proximityrev":
-                sortID = 7;
-                break;
-        }
-        sortByDropdown.setSelection(sortID, true);
-        sortMaps(sort); // added 10-24-22 When returning from activity or paused, if setSelection was not changing anything it would not sort. Defaulted to date added sorting.
-        // Update myAdapter list and database if import/rename/delete happened
-        checkForActivityResult();
-        // check if returned from another activity and change the maps list accordingly
-        // When return from GetMoreActivity or EditMapNameActivity update maps list
     }
 
     private void checkForActivityResult() {
@@ -1145,8 +1173,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortByName();
                 lv.setAdapter(myAdapter);
                 try {
-                    // save user sort preference in database
-                    dbHandler.setMapSort("name");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("name");
+                    });
+                    //dbHandler.setMapSort("name");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1157,8 +1188,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortByNameReverse();
                 lv.setAdapter(myAdapter);
                 try {
-                    // save user sort preference in database
-                    dbHandler.setMapSort("namerev");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("namerev");
+                    });
+                    //dbHandler.setMapSort("namerev");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1169,7 +1203,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortByDate();
                 lv.setAdapter(myAdapter);
                 try {
-                    dbHandler.setMapSort("date");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("date");
+                    });
+                    //dbHandler.setMapSort("date");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1180,7 +1218,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortByDateReverse();
                 lv.setAdapter(myAdapter);
                 try {
-                    dbHandler.setMapSort("daterev");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("daterev");
+                    });
+                    //dbHandler.setMapSort("daterev");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1191,7 +1233,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortBySize();
                 lv.setAdapter(myAdapter);
                 try {
-                    dbHandler.setMapSort("size");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("size");
+                    });
+                    //dbHandler.setMapSort("size");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1202,7 +1248,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortBySizeReverse();
                 lv.setAdapter(myAdapter);
                 try {
-                    dbHandler.setMapSort("sizerev");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("sizerev");
+                    });
+                    //dbHandler.setMapSort("sizerev");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1214,7 +1264,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortByProximity();
                 lv.setAdapter(myAdapter); // scrolls to the top
                 try {
-                    dbHandler.setMapSort("proximity");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("proximity");
+                    });
+                    //dbHandler.setMapSort("proximity");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -1226,7 +1280,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 myAdapter.SortByProximityReverse();
                 lv.setAdapter(myAdapter); // scrolls to the top
                 try {
-                    dbHandler.setMapSort("proximityrev");
+                    // save user sort preference in database on a background thread
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(MainActivity.this).setMapSort("proximityrev");
+                    });
+                    //dbHandler.setMapSort("proximityrev");
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();

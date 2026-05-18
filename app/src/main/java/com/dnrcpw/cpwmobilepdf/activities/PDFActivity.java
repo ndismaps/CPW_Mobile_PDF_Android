@@ -85,10 +85,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 /* show the map */
 public class PDFActivity extends AppCompatActivity implements SensorEventListener {
+    private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // for database calls
     //boolean debug = true;
     PDFView pdfView;
     ArrayList<PDFMap> maps;
@@ -174,7 +177,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     private WayPts wayPts;
     private String mapName;
     private DBWayPtHandler db;
-    private DBHandler db2;
+    //private DBHandler db2;
     private DBTrackHandler dbTrack;
     private Boolean markCurrent;
     private Tracks tracks;
@@ -1809,7 +1812,26 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         try {
             db = new DBWayPtHandler(PDFActivity.this);
             dbTrack = new DBTrackHandler(PDFActivity.this);
-            db2 = new DBHandler(PDFActivity.this);
+            dbExecutor.execute(() -> {
+                DBHandler db2 = DBHandler.getInstance(PDFActivity.this);
+                loadAdjacentMaps = db2.getLoadAdjMaps() != 0;
+                if (stateShowAllWayPts == -1)
+                    showAllWayPts = db2.getShowWaypoints() != 0;
+                if (stateShowTracks == -1)
+                    showTracks = db2.getShowTracks() != 0;
+                showAllWayPtLabels = db2.getShowAllWaypointLabels() != 0;
+                myMap = db2.getMap(mapName);
+                // set orientation for this map
+                portraitLocked = myMap.getMapOrientation().equals("portrait");
+                landscapeLocked = myMap.getMapOrientation().equals("landscape");
+                // get all maps for load adjacent maps and lock map in portrait or landscape
+                try {
+                    maps = db2.getAllMaps();
+                }catch (SQLException | NullPointerException e) {
+                    Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(),Toast.LENGTH_LONG).show();
+                }
+            });
+            /*db2 = new DBHandler(PDFActivity.this);
             loadAdjacentMaps = db2.getLoadAdjMaps() != 0;
             if (stateShowAllWayPts == -1)
                 showAllWayPts = db2.getShowWaypoints() != 0;
@@ -1825,7 +1847,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 maps = db2.getAllMaps();
             }catch (SQLException | NullPointerException e) {
                 Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(),Toast.LENGTH_LONG).show();
-            }
+            }*/
             // Update Waypoints
             wayPts = db.getWayPts(mapName);
             // Update Tracks
@@ -1901,9 +1923,9 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         //stopLocationUpdates();
         //Log.d("PDFActivity:onPause","close dbWayPtHandler, stop location updates");
         db.close();
-        db2.close();
+        //db2.close();
         db = null;
-        db2 = null;
+        //db2 = null;
         // Stop Screen Sensor Listener
         mSensorManager.unregisterListener(this, mAccelerometer);
         mSensorManager.unregisterListener(this, mMagnetometer);
@@ -2399,7 +2421,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_showAll.isChecked()){
                 action_showAll.setChecked(false);
                 showAllWayPtLabels = false;
-                db2.setShowAllWaypointLabels(0);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(PDFActivity.this).setShowAllWaypointLabels(0);
+                });
+                //db2.setShowAllWaypointLabels(0);
             }
             // check show all labels, also turn on show waypoints
             else{
@@ -2407,8 +2432,11 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 showAllWayPtLabels = true;
                 action_showWayPts.setChecked(true);
                 showAllWayPts = true;
-                db2.setShowAllWaypointLabels(1);
-                db2.setShowWaypoints(1);
+                dbExecutor.execute(() -> {
+                    DBHandler db2 = DBHandler.getInstance(PDFActivity.this);
+                    db2.setShowAllWaypointLabels(1);
+                    db2.setShowWaypoints(1);
+                });
             }
         }
         // Waypoints
@@ -2418,13 +2446,19 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_showWayPts.isChecked()){
                 action_showWayPts.setChecked(false);
                 showAllWayPts = false;
-                db2.setShowWaypoints(0);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(PDFActivity.this).setShowWaypoints(0);
+                });
+                //db2.setShowWaypoints(0);
             }
             // check waypoints
             else{
                 action_showWayPts.setChecked(true);
                 showAllWayPts = true;
-                db2.setShowWaypoints(1);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(PDFActivity.this).setShowWaypoints(1);
+                });
+                //db2.setShowWaypoints(1);
             }
         }
         // Show Tracking
@@ -2434,13 +2468,19 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_showTracks.isChecked()){
                 action_showTracks.setChecked(false);
                 showTracks = false;
-                db2.setShowTracks(0);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(PDFActivity.this).setShowTracks(0);
+                });
+                // db2.setShowTracks(0);
             }
             // check tracks
             else{
                 action_showTracks.setChecked(true);
                 showTracks = true;
-                db2.setShowTracks(1);
+                dbExecutor.execute(() -> {
+                   DBHandler.getInstance(PDFActivity.this).setShowTracks(1);
+                });
+                //db2.setShowTracks(1);
             }
         }
         // Show AdjacentMaps when current location is on or close to other maps
@@ -2448,12 +2488,18 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_loadAdjacentMaps.isChecked()){
                 action_loadAdjacentMaps.setChecked(false);
                 loadAdjacentMaps = false;
-                db2.setLoadAdjMaps(0);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(0);
+                });
+                //db2.setLoadAdjMaps(0);
             }
             else{
                 action_loadAdjacentMaps.setChecked(true);
                 loadAdjacentMaps = true;
-                db2.setLoadAdjMaps(1);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(1);
+                });
+                //db2.setLoadAdjMaps(1);
             }
         }
         else if (id == R.id.action_portrait){
@@ -2464,7 +2510,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
                 try{
                     myMap.setMapOrientation("portrait");// update user preference
-                    db2.updateMap(myMap);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
+                    });
+                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2475,7 +2524,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             else {
                 try{
                     myMap.setMapOrientation("none");// update user preference
-                    db2.updateMap(myMap);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
+                    });
+                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2493,7 +2545,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
                 try{
                     myMap.setMapOrientation("landscape");// update user preference
-                    db2.updateMap(myMap);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
+                    });
+                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2503,7 +2558,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             } else {
                 try{
                     myMap.setMapOrientation("none");// update user preference
-                    db2.updateMap(myMap);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
+                    });
+                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }

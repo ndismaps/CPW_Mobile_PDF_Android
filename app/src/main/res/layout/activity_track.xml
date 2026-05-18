@@ -28,7 +28,7 @@
           android:layout_width="wrap_content"
           android:layout_height="wrap_content"
           android:layout_gravity="center_vertical"
-          android:contentDescription="Track image"
+          android:contentDescription="@string/trackImg"
           android:minHeight="90dp"
           android:src="@drawable/ic_cyan_track"
           tools:ignore="ImageContrastCheck" />
@@ -95,7 +95,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Track Color:"
+        android:text="@string/trackColor"
         android:textStyle="bold" />
 
     <RadioGroup

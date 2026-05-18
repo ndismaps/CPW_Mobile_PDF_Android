@@ -24,6 +24,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Created by tammy on 9/7/2017.
@@ -34,16 +35,18 @@ import java.util.Locale;
  */
 
 public class CustomAdapter extends BaseAdapter {
-    private final Context c;
-    ArrayList<PDFMap> pdfMaps;
+    private final Context context;
+    private ExecutorService dbExecutor; // Pass this from the Activity
+    ArrayList<PDFMap> pdfMaps = new ArrayList<>();
     Double latNow, longNow;
-    private final DBHandler db;
+    //private final DBHandler db;
     private final DBWayPtHandler wpdb;
 
-    public CustomAdapter(Context c, ArrayList<PDFMap> pdfMaps, DBHandler db, DBWayPtHandler wpdb) {
-        this.c = c;
+    public CustomAdapter(Context c, ArrayList<PDFMap> pdfMaps, ExecutorService dbExecutor, DBWayPtHandler wpdb) {
+        this.context = c;
         this.pdfMaps = pdfMaps;
-        this.db = db;
+        this.dbExecutor = dbExecutor;
+        //this.db = db;
         this.wpdb = wpdb;
     }
 
@@ -127,15 +130,18 @@ public class CustomAdapter extends BaseAdapter {
                 PDFMap map = pdfMaps.get(i);
                 File file = new File(map.getPath());
                 if (!file.exists()) {
-                    //Log.d("CustomAdapter",c.getResources().getString(R.string.file) + map.getName() +  c.getResources().getString(R.string.noLongerExists));
+                    //Log.d("CustomAdapter",context.getResources().getString(R.string.file) + map.getName() +  context.getResources().getString(R.string.noLongerExists));
                     File f = new File(map.getPath());
                     if (f.exists()) {
                         boolean result = f.delete();
                         if (!result){
-                            Toast.makeText(c, c.getResources().getString(R.string.problemRemovingMap), Toast.LENGTH_LONG).show();
+                            Toast.makeText(context, context.getResources().getString(R.string.problemRemovingMap), Toast.LENGTH_LONG).show();
                         }
                     }
-                    db.deleteMap(map);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(context).deleteMap(map);
+                    });
+                    //db.deleteMap(map);
                     wpdb.deleteWayPt(pdfMaps.get(i).getName());
                     pdfMaps.remove(i);
                     // delete thumbnail image also
@@ -144,19 +150,17 @@ public class CustomAdapter extends BaseAdapter {
                         if (img.exists()) {
                             boolean result2 = img.delete();
                             if (!result2)
-                                Toast.makeText(c, c.getResources().getString(R.string.deleteThumbnail), Toast.LENGTH_LONG).show();
+                                Toast.makeText(context, context.getResources().getString(R.string.deleteThumbnail), Toast.LENGTH_LONG).show();
                         }
                     }
                     i--;
                 }
             }
             notifyDataSetChanged();
-            //db.close();
-            //wpdb.close();
         } catch (IndexOutOfBoundsException e) {
-            Toast.makeText(c,  c.getResources().getString(R.string.problemRemovingMap) + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context,  context.getResources().getString(R.string.problemRemovingMap) + e.getMessage(), Toast.LENGTH_LONG).show();
         } catch (SQLException e){
-            Toast.makeText(c,  c.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context,  context.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -260,19 +264,19 @@ public class CustomAdapter extends BaseAdapter {
                     // use 2 decimal points
                     if (dist < 0.1){
                         map.setMiles(dist);
-                        distStr = String.format(Locale.US, "%s %.2f %s %s", str, dist, c.getResources().getString(R.string.miles), direction);
+                        distStr = String.format(Locale.US, "%s %.2f %s %s", str, dist, context.getResources().getString(R.string.miles), direction);
                         map.setDistToMap(distStr);
                     }else {
                         // use 1 decimal point
                         map.setMiles(dist);
-                        distStr = String.format(Locale.US, "%s %.1f %s %s", str, dist, c.getResources().getString(R.string.miles), direction);
+                        distStr = String.format(Locale.US, "%s %.1f %s %s", str, dist, context.getResources().getString(R.string.miles), direction);
                         map.setDistToMap(distStr);
                     }
                     //Log.d("CustomAdapter", "updateDistToMap: " + map.getName() + " " + map.getDistToMap());
                 }
             }
         } catch (Exception e){
-            Toast.makeText(c,  "Problem getting distance to map. " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context,  "Problem getting distance to map. " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -308,7 +312,7 @@ public class CustomAdapter extends BaseAdapter {
                         // Check if name has changed. If not return
                         //Log.d("CustomAdapter","Rename "+map.getName()+" to "+name);
                         if (name.equals(map.getName())) return;
-                        File sdcard = c.getFilesDir();
+                        File sdcard = context.getFilesDir();
                         File file = new File(map.getPath());
                         String fileName = name;
                         if (!name.endsWith(".pdf"))
@@ -316,10 +320,13 @@ public class CustomAdapter extends BaseAdapter {
                         File newName = new File(sdcard, fileName);
                         boolean result = file.renameTo(newName);
                         if (!result)
-                            Toast.makeText(c, "Can't rename file.", Toast.LENGTH_LONG).show();
+                            Toast.makeText(context, "Can't rename file.", Toast.LENGTH_LONG).show();
                         map.setName(name);
                         map.setPath(sdcard + "/" + fileName);
-                        db.updateMap(map);
+                        dbExecutor.execute(() -> {
+                            DBHandler.getInstance(context).updateMap(map);
+                        });
+                        //db.updateMap(map);
 
                         // update waypoint map names
                         WayPts wayPts = wpdb.getWayPts(oldMapName);
@@ -332,7 +339,7 @@ public class CustomAdapter extends BaseAdapter {
                         /// ***********TODO*********
                     } catch (Exception e) {
                         //db.close();
-                        Toast.makeText(c, "Error renaming: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        Toast.makeText(context, "Error renaming: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     }
                     notifyDataSetChanged();
                     break;
@@ -340,9 +347,9 @@ public class CustomAdapter extends BaseAdapter {
             }
             //db.close();
         } catch (IndexOutOfBoundsException e) {
-            Toast.makeText(c, "Problem renaming map: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context, "Problem renaming map: " + e.getMessage(), Toast.LENGTH_LONG).show();
         } catch (SQLException e) {
-            Toast.makeText(c, c.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context, context.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -359,15 +366,18 @@ public class CustomAdapter extends BaseAdapter {
             //DBWayPtHandler wpdb = new DBWayPtHandler(c);
             for (int i = pdfMaps.size()-1; i > -1;  i--) {
                 PDFMap map = pdfMaps.get(i);
-                Toast.makeText(c,"Deleting: "+map.getName(), Toast.LENGTH_LONG).show();
+                Toast.makeText(context,"Deleting: "+map.getName(), Toast.LENGTH_LONG).show();
                 File f = new File(map.getPath());
                 if (f.exists()) {
                     boolean deleted = f.delete();
                     if (!deleted) {
-                        Toast.makeText(c, c.getResources().getString(R.string.deleteFile), Toast.LENGTH_LONG).show();
+                        Toast.makeText(context, context.getResources().getString(R.string.deleteFile), Toast.LENGTH_LONG).show();
                     }
                 }
-                db.deleteMap(map);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(context).deleteMap(map);
+                });
+                //db.deleteMap(map);
                 wpdb.deleteWayPt(map.getName());// delete waypoints
                 // TODO remove tracks *********************************************
                 pdfMaps.remove(i);
@@ -377,7 +387,7 @@ public class CustomAdapter extends BaseAdapter {
                     if (img.exists()) {
                         boolean deleted = img.delete();
                         if (!deleted) {
-                            Toast.makeText(c, c.getResources().getString(R.string.deleteThumbnail), Toast.LENGTH_LONG).show();
+                            Toast.makeText(context, context.getResources().getString(R.string.deleteThumbnail), Toast.LENGTH_LONG).show();
                         }
                     }
                 }
@@ -386,9 +396,9 @@ public class CustomAdapter extends BaseAdapter {
             //db.close();
             //wpdb.close();
         } catch (IndexOutOfBoundsException e) {
-            Toast.makeText(c, "Problem removing map: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context, "Problem removing map: " + e.getMessage(), Toast.LENGTH_LONG).show();
         } catch (SQLException e){
-            Toast.makeText(c, c.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context, context.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -404,11 +414,14 @@ public class CustomAdapter extends BaseAdapter {
                     if (f.exists()) {
                         boolean deleted = f.delete();
                         if (!deleted) {
-                            Toast.makeText(c, c.getResources().getString(R.string.deleteFile), Toast.LENGTH_LONG).show();
+                            Toast.makeText(context, context.getResources().getString(R.string.deleteFile), Toast.LENGTH_LONG).show();
                         }
                     }
-                    //Toast.makeText(c,"Deleting: "+map.getName(), Toast.LENGTH_LONG).show();
-                    db.deleteMap(map);
+                    //Toast.makeText(context,"Deleting: "+map.getName(), Toast.LENGTH_LONG).show();
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(context).deleteMap(map);
+                    });
+                    //db.deleteMap(map);
                     wpdb.deleteWayPts(map.getName());
                     // TODO remove tracks **********************************************
                     pdfMaps.remove(i);
@@ -419,7 +432,7 @@ public class CustomAdapter extends BaseAdapter {
                         if (img.exists()) {
                             boolean deleted = img.delete();
                             if (!deleted) {
-                                Toast.makeText(c, c.getResources().getString(R.string.deleteThumbnail), Toast.LENGTH_LONG).show();
+                                Toast.makeText(context, context.getResources().getString(R.string.deleteThumbnail), Toast.LENGTH_LONG).show();
                             }
                         }
                     }
@@ -427,12 +440,10 @@ public class CustomAdapter extends BaseAdapter {
                     break;
                 }
             }
-            //db.close();
-            //dbwaypt.close();
         } catch (IndexOutOfBoundsException e) {
-            Toast.makeText(c, c.getResources().getString(R.string.problemRemovingMap) + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context, context.getResources().getString(R.string.problemRemovingMap) + e.getMessage(), Toast.LENGTH_LONG).show();
         } catch (SQLException e){
-            Toast.makeText(c, c.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(context, context.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -449,7 +460,7 @@ public class CustomAdapter extends BaseAdapter {
         if (view == null) {
             holder = new ViewHolder();
             // INFLATE CUSTOM LAYOUT
-            view = LayoutInflater.from(c).inflate(R.layout.model, viewGroup, false);
+            view = LayoutInflater.from(context).inflate(R.layout.model, viewGroup, false);
             holder.nameTxt = view.findViewById(R.id.nameTxt);
             holder.fileSizeTxt = view.findViewById(R.id.fileSizeTxt);
             holder.distToMapTxt = view.findViewById(R.id.distToMapTxt);
@@ -479,13 +490,13 @@ public class CustomAdapter extends BaseAdapter {
                 else
                     holder.img.setImageResource(R.drawable.pdf_icon);
             }catch (Exception ex){
-                Toast.makeText(c, "Problem reading thumbnail.", Toast.LENGTH_LONG).show();
+                Toast.makeText(context, "Problem reading thumbnail.", Toast.LENGTH_LONG).show();
                 holder.img.setImageResource(R.drawable.pdf_icon);
             }
         }
 
         // Failed to Load - remove it. GetMoreActivity calls PDFMap.importMap
-        if (pdfMap.getName().equals(c.getResources().getString(R.string.loading))) {
+        if (pdfMap.getName().equals(context.getResources().getString(R.string.loading))) {
             removeItem(pdfMap.getId());
         } else {
             holder.nameTxt.setText(pdfMap.getName());
@@ -510,17 +521,17 @@ public class CustomAdapter extends BaseAdapter {
             // Display the map
             String bounds = pdfMap.getBounds();
             if (bounds == null) {
-                Toast.makeText(c, "This file is not a Geo PDF. Missing GPTS Bounds.", Toast.LENGTH_LONG).show();
+                Toast.makeText(context, "This file is not a Geo PDF. Missing GPTS Bounds.", Toast.LENGTH_LONG).show();
                 return;
             }
             String mediaBox = pdfMap.getMediabox();
             if (mediaBox == null) {
-                Toast.makeText(c, "This file is not a Geo PDF. Missing MediaBox.", Toast.LENGTH_LONG).show();
+                Toast.makeText(context, "This file is not a Geo PDF. Missing MediaBox.", Toast.LENGTH_LONG).show();
                 return;
             }
             String viewPort = pdfMap.getViewport();
             if (viewPort == null) {
-                Toast.makeText(c, "This file is not a Geo PDF. Missing Viewport.", Toast.LENGTH_LONG).show();
+                Toast.makeText(context, "This file is not a Geo PDF. Missing Viewport.", Toast.LENGTH_LONG).show();
                 return;
             }
             openPDFView(pdfMap.getPath(), pdfMap.getName(), bounds, mediaBox, viewPort);
@@ -530,14 +541,14 @@ public class CustomAdapter extends BaseAdapter {
         // ITEM LONG CLICK - show activity to delete or rename item
         view.setOnLongClickListener(view12 -> {
             // Open edit activity
-            Intent i1 = new Intent(c, EditMapNameActivity.class);
+            Intent i1 = new Intent(context, EditMapNameActivity.class);
             i1.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
             i1.putExtra("PATH", pdfMap.getPath());
             i1.putExtra("NAME", pdfMap.getName());
             i1.putExtra("BOUNDS", pdfMap.getBounds());
             i1.putExtra("ID", pdfMap.getId());
             i1.putExtra("IMG", pdfMap.getThumbnail());
-            c.startActivity(i1);
+            context.startActivity(i1);
             return false;
         });
         return view;
@@ -545,13 +556,13 @@ public class CustomAdapter extends BaseAdapter {
 
     // OPEN PDF VIEW - load the map
     public void openPDFView(String path, String name, String bounds, String mediaBox, String viewPort) {
-        Intent i = new Intent(c, PDFActivity.class);
+        Intent i = new Intent(context, PDFActivity.class);
         //i.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         i.putExtra("PATH", path);
         i.putExtra("NAME", name);
         i.putExtra("BOUNDS", bounds);
         i.putExtra("MEDIABOX", mediaBox);
         i.putExtra("VIEWPORT", viewPort);
-        c.startActivity(i);
+        context.startActivity(i);
     }
 }

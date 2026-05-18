@@ -124,7 +124,7 @@
     <string name="help_USGS">Click on \'USGS\'. Search for a location and tap on it. Scroll down to the most recent map and tap on it. Scroll down and select GeoPDF. It may download immediately. If it does not, wait for it to display, click on the menu icon, and then click on \'download\' or \'save\'.</string>
     <string name="help_USGS_img">USGS web app image</string>
     <string name="help_import_title"><u>STEP 2: Import Maps</u></string>
-    <string name="help_importmaps1">After you have downloaded PDF maps *go back to this app and import them by tapping on the File Picker button. Use the menu in the top-left to select from Recent, Documents, or Downloads folders. Or select the Google Drive icon if the file is located there. Tap on the PDF file and it will import it and display the map. The map file is copied to the app directory so deleting the original will not affect the imported maps.</string>
+    <string name="help_importmaps1">After you have downloaded PDF maps *go back to this app and import them by tapping on the File Picker button. Use the menu in the top-left to select from Recent, Documents, or Downloads folders. Or select the Google Drive icon if the file is located there. Tap on the PDF file, and it will import it and display the map. The map file is copied to the app directory so deleting the original will not affect the imported maps.</string>
     <string name="help_importmaps2">* Hint to get back to this app: tap the back icon next to the home icon at the bottom of your phone.</string>
 
     <!-- View Map Help -->
