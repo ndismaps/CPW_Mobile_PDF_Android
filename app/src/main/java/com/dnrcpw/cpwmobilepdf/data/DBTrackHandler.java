@@ -16,10 +16,10 @@ import java.util.ArrayList;
 public class DBTrackHandler extends SQLiteOpenHelper {
     private static final int DATABASE_VERSION = 1;
     // Database Name
-    private static final String DATABASE_NAME = "tracksInfo";
+    private static final String TRACKS_DATABASE_NAME = "tracksInfo";
     // Contacts table name
     private static final String TABLE_TRACKS = "tracks";
-    // wayPts Table Columns names
+    // Tracks Table Columns names
     private static final String KEY_ID = "id";
     private static final String KEY_MAPNAME = "mapname";
     private static final String KEY_DESC = "descrption";
@@ -28,7 +28,7 @@ public class DBTrackHandler extends SQLiteOpenHelper {
     private static final String KEY_TIME = "time";
 
     public DBTrackHandler(Context context) throws SQLException {
-        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        super(context, TRACKS_DATABASE_NAME, null, DATABASE_VERSION);
     }
 
     @Override
@@ -49,28 +49,22 @@ public class DBTrackHandler extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(KEY_MAPNAME, track.getMapName()); // Name of map
-        values.put(KEY_DESC, track.getDesc()); // Waypoint description
+        values.put(KEY_DESC, track.getDesc()); // Track description
         values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x2,y2,x3,y3... line segments in lat, long
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
-        values.put(KEY_TIME, track.getTime()); // Date and time of creation of waypoint
+        values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
         // Inserting Row
         return db.insert(TABLE_TRACKS, null, values);
     }
 
-    /*public void updateTrack(int id, TrackSegment trackSegment){
-        SQLiteDatabase db = this.getWritableDatabase();
-        ContentValues values = new ContentValues();
-        String strSegment = trackSegment.getSegment(); // get line segment as comma-delimited string x1,y1,x2,y2
-        values.put(KEY_LINE_SEGMENTS, strSegment); // Name of map
-    }*/
     public int updateTrack(Track track){
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(KEY_MAPNAME, track.getMapName()); // Name of map
-        values.put(KEY_DESC, track.getDesc()); // Waypoint description
+        values.put(KEY_DESC, track.getDesc()); // Track description
         values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x2,y2,x3,y3... line segments in lat, long
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
-        values.put(KEY_TIME, track.getTime()); // Date and time of creation of waypoint
+        values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
         // updating row
         return db.update(TABLE_TRACKS, values, KEY_ID + " = ?",
                 new String[]{ String.valueOf(track.getId()) });

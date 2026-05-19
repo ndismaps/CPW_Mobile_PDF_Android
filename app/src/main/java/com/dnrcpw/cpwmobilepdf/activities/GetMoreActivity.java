@@ -157,9 +157,6 @@ public class GetMoreActivity extends AppCompatActivity {
                         Integer index = DBHandler.getInstance(GetMoreActivity.this).addMap(map2);
                         map2.setId(index);
                         DBHandler.getInstance(GetMoreActivity.this).updateMap(map2);
-                        runOnUiThread(() -> {
-
-                        });
                     });
 
 

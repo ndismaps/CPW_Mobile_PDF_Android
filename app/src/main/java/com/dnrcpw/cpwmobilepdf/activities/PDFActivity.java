@@ -64,7 +64,7 @@ import androidx.core.content.res.ResourcesCompat;
 import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.data.DBWayPtHandler;
-import com.dnrcpw.cpwmobilepdf.data.DBTrackHandler;
+//import com.dnrcpw.cpwmobilepdf.data.DBTrackHandler;
 import com.dnrcpw.cpwmobilepdf.model.PDFMap;
 import com.dnrcpw.cpwmobilepdf.model.WayPt;
 import com.dnrcpw.cpwmobilepdf.model.WayPts;
@@ -178,7 +178,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     private String mapName;
     private DBWayPtHandler db;
     //private DBHandler db2;
-    private DBTrackHandler dbTrack;
+    //private DBTrackHandler dbTrack;
     private Boolean markCurrent;
     private Tracks tracks;
     private int currentTrackID = -1;
@@ -609,13 +609,17 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         getViewPortVariables();
         wayPts = db.getWayPts(mapName);
         wayPts.SortPts();
-        try {
-            tracks = dbTrack.getTracks(mapName);
-        }catch (SQLException exc){
-            Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
-        }catch (Exception exc){
-            Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
-        }
+        dbExecutor.execute(() -> {
+            try {
+                DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                tracks = db.getTracks(mapName);
+            }catch (SQLException exc){
+                Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
+            }catch (Exception exc){
+                Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        });
+
         clickedWP = -1; // hide balloon
         clickedTrack = -1; // hide balloon for tracks
         clickTrackX = -1.0f;
@@ -1809,9 +1813,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
         // read user preferences from DBHandler SETTINGS_TABLE
         // read waypoints and tracks for this map
-        try {
             db = new DBWayPtHandler(PDFActivity.this);
-            dbTrack = new DBTrackHandler(PDFActivity.this);
+
             dbExecutor.execute(() -> {
                 DBHandler db2 = DBHandler.getInstance(PDFActivity.this);
                 loadAdjacentMaps = db2.getLoadAdjMaps() != 0;
@@ -1828,6 +1831,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 try {
                     maps = db2.getAllMaps();
                 }catch (SQLException | NullPointerException e) {
+                    Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(),Toast.LENGTH_LONG).show();
+                }
+                // Update Tracks
+                try {
+                    db2.getTracks(mapName);
+                } catch (Exception e){
                     Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(),Toast.LENGTH_LONG).show();
                 }
             });
@@ -1850,11 +1859,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             }*/
             // Update Waypoints
             wayPts = db.getWayPts(mapName);
-            // Update Tracks
-            tracks = dbTrack.getTracks(mapName);
-        }catch (Exception e){
-            Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_LONG).show();
-        }
 
         wayPts.SortPts();
         clickedWP = -1; // hide balloon
@@ -1917,15 +1921,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         // Location Service
         // Unregister to prevent memory leaks when app is in background
         unregisterReceiver(locationReceiver);
-        // TODO remove
-        // Location Service
-        // Unregister to prevent memory leaks when app is in background
-        //stopLocationUpdates();
-        //Log.d("PDFActivity:onPause","close dbWayPtHandler, stop location updates");
-        db.close();
-        //db2.close();
-        db = null;
-        //db2 = null;
+
         // Stop Screen Sensor Listener
         mSensorManager.unregisterListener(this, mAccelerometer);
         mSensorManager.unregisterListener(this, mMagnetometer);
@@ -1978,7 +1974,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         (longNow >= long1 && longNow <= long2)) {
                     currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
                     // Save new line segment in database
-                    dbTrack.updateTrack(currentTrack);
+                    dbExecutor.execute(() -> {
+                        DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                        db.updateTrack(currentTrack);
+                    });
                 }
 
                 // **Debug** make it simulate user movement to draw a track
@@ -2424,7 +2423,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 dbExecutor.execute(() -> {
                     DBHandler.getInstance(PDFActivity.this).setShowAllWaypointLabels(0);
                 });
-                //db2.setShowAllWaypointLabels(0);
             }
             // check show all labels, also turn on show waypoints
             else{
@@ -2449,7 +2447,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 dbExecutor.execute(() -> {
                     DBHandler.getInstance(PDFActivity.this).setShowWaypoints(0);
                 });
-                //db2.setShowWaypoints(0);
             }
             // check waypoints
             else{
@@ -2457,8 +2454,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 showAllWayPts = true;
                 dbExecutor.execute(() -> {
                     DBHandler.getInstance(PDFActivity.this).setShowWaypoints(1);
-                });
-                //db2.setShowWaypoints(1);
+                });;
             }
         }
         // Show Tracking
@@ -2471,7 +2467,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 dbExecutor.execute(() -> {
                     DBHandler.getInstance(PDFActivity.this).setShowTracks(0);
                 });
-                // db2.setShowTracks(0);
             }
             // check tracks
             else{
@@ -2480,7 +2475,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 dbExecutor.execute(() -> {
                    DBHandler.getInstance(PDFActivity.this).setShowTracks(1);
                 });
-                //db2.setShowTracks(1);
             }
         }
         // Show AdjacentMaps when current location is on or close to other maps
@@ -2491,7 +2485,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 dbExecutor.execute(() -> {
                     DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(0);
                 });
-                //db2.setLoadAdjMaps(0);
             }
             else{
                 action_loadAdjacentMaps.setChecked(true);
@@ -2499,7 +2492,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 dbExecutor.execute(() -> {
                     DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(1);
                 });
-                //db2.setLoadAdjMaps(1);
             }
         }
         else if (id == R.id.action_portrait){
@@ -2513,7 +2505,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     dbExecutor.execute(() -> {
                         DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
                     });
-                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2527,7 +2518,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     dbExecutor.execute(() -> {
                         DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
                     });
-                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2548,7 +2538,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     dbExecutor.execute(() -> {
                         DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
                     });
-                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2561,7 +2550,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     dbExecutor.execute(() -> {
                         DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
                     });
-                    //db2.updateMap(myMap);
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2607,16 +2595,20 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 int num = findAUniqueTrackName();
                 tracks.add(mapName,"Track "+num, "cyan", null);
                 currentTrackID = tracks.size()-1;
-                long newId = dbTrack.addTrack(tracks.get(currentTrackID));
-                tracks.get(currentTrackID).setId(newId);
-                addTrackFlag = true; // tracking icon is active
-                clickedTrack = -1; // hide balloon popups
-                //newTrack = false;
-
-                showTracks = true;
-                action_showTracks.setChecked(true);
-                trackMenuItem.setIcon(R.drawable.ic_cyan_track);
-                Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOn), Toast.LENGTH_LONG).show();
+                dbExecutor.execute(() -> {
+                    DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                    long newId = db.addTrack(tracks.get(currentTrackID));
+                    // Switch to main thread to push the data to your UI
+                    runOnUiThread(() -> {
+                        tracks.get(currentTrackID).setId(newId);
+                        addTrackFlag = true; // tracking icon is active
+                        clickedTrack = -1; // hide balloon popups
+                        showTracks = true;
+                        action_showTracks.setChecked(true);
+                        trackMenuItem.setIcon(R.drawable.ic_cyan_track);
+                        Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOn), Toast.LENGTH_LONG).show();
+                    });
+                });
             }
         }
         else if (id == R.id.action_add_way_pt_menu) {
@@ -2723,16 +2715,16 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     }
 
     private void showTrackingConfigurationPanel() {
-        // 1. Inflate the layout manually
+        // Inflate the layout manually
         LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
         View popupView = inflater.inflate(R.layout.menu_tracking_config, null);
 
-        // 2. Initialize the views inside the layout
+        // Initialize the views inside the layout
         TextView intervalLabel = popupView.findViewById(R.id.menu_interval_label);
         SeekBar seekBar = popupView.findViewById(R.id.menu_interval_seekbar);
         Button btnAuto = popupView.findViewById(R.id.menu_btn_reset_auto);
 
-        // 3. Create the window frame configuration
+        // Create the window frame configuration
         final PopupWindow popupWindow = new PopupWindow(
                 popupView,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -2740,7 +2732,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 true // Allows closing the panel if the user taps outside of it
         );
 
-        // 4. Bind the SeekBar listener logic
+        // Bind the SeekBar listener logic
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
@@ -2770,7 +2762,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             }
         });
 
-        // 5. Bind the Auto Button click listener
+        // Bind the Auto Button click listener
         btnAuto.setOnClickListener(v -> {
             Intent intent = new Intent(PDFActivity.this, TrackingService.class);
             intent.putExtra("enable_auto", true);
@@ -2785,7 +2777,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             popupWindow.dismiss();
         });
 
-        // 6. Anchor the window framework underneath the top right menu zone
+        // Anchor the window framework underneath the top right menu zone
         View anchorView = findViewById(android.R.id.content);
         if (anchorView != null) {
             // Displays the custom overlay in the upper right quadrant of the display screen
@@ -2900,12 +2892,16 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     DialogInterface.OnClickListener trackDialogClickListener = new DialogInterface.OnClickListener() {
         @Override
         public void onClick(DialogInterface dialog, int which) {
-            switch (which){
+            switch (which) {
                 case DialogInterface.BUTTON_POSITIVE:
                     //'DELETE' button clicked, remove waypoint or track
                     // delete track
                     Track track = tracks.get(del_id);
-                    dbTrack.deleteTrack(track);
+                    dbExecutor.execute(() -> {
+                        DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                        db.deleteTrack(track);
+                    });
+                    //dbTrack.deleteTrack(track);
                     tracks.remove(track);
                     deleting = false;
                     clickedTrack = -1;

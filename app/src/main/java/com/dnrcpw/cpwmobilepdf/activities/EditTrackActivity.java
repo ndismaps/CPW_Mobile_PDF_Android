@@ -18,7 +18,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.dnrcpw.cpwmobilepdf.R;
-import com.dnrcpw.cpwmobilepdf.data.DBTrackHandler;
+import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.model.Track;
 import com.dnrcpw.cpwmobilepdf.model.Tracks;
 
@@ -37,7 +37,6 @@ public class EditTrackActivity extends AppCompatActivity{
     String path;
     String bounds;
     String viewPort;
-    private DBTrackHandler dbTrackHandler;
     int id;
     Track track;
     //boolean landscape;
@@ -47,7 +46,6 @@ public class EditTrackActivity extends AppCompatActivity{
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        dbTrackHandler = new DBTrackHandler(this);
         // Read the waypoint id that was clicked on and the map name
         Intent i = this.getIntent();
         if (i.getExtras() == null){
@@ -69,68 +67,71 @@ public class EditTrackActivity extends AppCompatActivity{
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
         }*/
-        try {
-            tracks = dbTrackHandler.getTracks(mapName);
-        }catch (SQLException exc){
-            Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
+        dbExecutor.execute(() -> {
+            DBHandler db = DBHandler.getInstance(EditTrackActivity.this);
+            try {
+                tracks = db.getTracks(mapName);
+            } catch (SQLException exc) {
+                Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database. " + exc.getMessage(), Toast.LENGTH_LONG).show();
 
-        }catch (Exception exc){
-            Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database, other exception. "+exc.getMessage(), Toast.LENGTH_LONG).show();
+            } catch (Exception exc) {
+                Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database, other exception. " + exc.getMessage(), Toast.LENGTH_LONG).show();
 
-        }
-        try {
-            track = tracks.get(id);
-        }catch (Exception e){
-            Toast.makeText(EditTrackActivity.this,"That track was not found in the database. Error: "+e.getMessage(),Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        setContentView(R.layout.activity_track);
-        prevName = track.getDesc();
-        editTxt = findViewById(R.id.trackName);
-        editTxt.setText(track.getDesc());
-        trackImg = findViewById(R.id.track_img);
-        timeStamp = findViewById(R.id.trackTime);
-        timeStamp.setText(track.getTime());
-        trackColorGrp = findViewById(R.id.trackColor);
-        String trackColor = track.getColorName();
-        cyanBtn = findViewById(R.id.cyanTrack);
-        redBtn = findViewById(R.id.redTrack);
-        blueBtn = findViewById(R.id.blueTrack);
-        if (trackColor.equals("cyan")){
-            cyanBtn.setChecked(true);
-            trackImg.setImageResource(R.drawable.ic_cyan_track);
-        }
-        else if (trackColor.equals("red")){
-            redBtn.setChecked(true);
-            trackImg.setImageResource(R.drawable.ic_red_track);
-        }
-        else {
-            blueBtn.setChecked(true);
-            trackImg.setImageResource(R.drawable.ic_blue_track);
-        }
-        ImageButton clearBtn = findViewById(R.id.clear_track);
-
-        // Clear track name
-        clearBtn.setOnClickListener(view -> editTxt.setText(""));
-
-        // Listeners for track color radio buttons
-        trackColorGrp.setOnCheckedChangeListener((radioGroup, checkedId) -> {
-            if (checkedId == R.id.cyanTrack){
-                track.setColorName("cyan");
-                trackImg.setImageResource(R.drawable.ic_cyan_track);
-                changed = true;
             }
-            else if (checkedId == R.id.redTrack){
-                track.setColorName("red");
-                trackImg.setImageResource(R.drawable.ic_red_track);
-                changed = true;
-            }
-            else if  (checkedId == R.id.blueTrack){
-                track.setColorName("blue");
-                trackImg.setImageResource(R.drawable.ic_blue_track);
-                changed = true;
-            }
+            // Switch to main thread to push the data to your UI
+            runOnUiThread(() -> {
+
+                try {
+                    track = tracks.get(id);
+                } catch (Exception e) {
+                    Toast.makeText(EditTrackActivity.this, "That track was not found in the database. Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    return;
+                }
+
+                setContentView(R.layout.activity_track);
+                prevName = track.getDesc();
+                editTxt = findViewById(R.id.trackName);
+                editTxt.setText(track.getDesc());
+                trackImg = findViewById(R.id.track_img);
+                timeStamp = findViewById(R.id.trackTime);
+                timeStamp.setText(track.getTime());
+                trackColorGrp = findViewById(R.id.trackColor);
+                String trackColor = track.getColorName();
+                cyanBtn = findViewById(R.id.cyanTrack);
+                redBtn = findViewById(R.id.redTrack);
+                blueBtn = findViewById(R.id.blueTrack);
+                if (trackColor.equals("cyan")) {
+                    cyanBtn.setChecked(true);
+                    trackImg.setImageResource(R.drawable.ic_cyan_track);
+                } else if (trackColor.equals("red")) {
+                    redBtn.setChecked(true);
+                    trackImg.setImageResource(R.drawable.ic_red_track);
+                } else {
+                    blueBtn.setChecked(true);
+                    trackImg.setImageResource(R.drawable.ic_blue_track);
+                }
+                ImageButton clearBtn = findViewById(R.id.clear_track);
+
+                // Clear track name
+                clearBtn.setOnClickListener(view -> editTxt.setText(""));
+
+                // Listeners for track color radio buttons
+                trackColorGrp.setOnCheckedChangeListener((radioGroup, checkedId) -> {
+                    if (checkedId == R.id.cyanTrack) {
+                        track.setColorName("cyan");
+                        trackImg.setImageResource(R.drawable.ic_cyan_track);
+                        changed = true;
+                    } else if (checkedId == R.id.redTrack) {
+                        track.setColorName("red");
+                        trackImg.setImageResource(R.drawable.ic_red_track);
+                        changed = true;
+                    } else if (checkedId == R.id.blueTrack) {
+                        track.setColorName("blue");
+                        trackImg.setImageResource(R.drawable.ic_blue_track);
+                        changed = true;
+                    }
+                });
+            });
         });
     }
 
@@ -141,7 +142,9 @@ public class EditTrackActivity extends AppCompatActivity{
             switch (which){
                 case DialogInterface.BUTTON_POSITIVE:
                     //'DELETE' button clicked, remove map from imported maps
-                    dbTrackHandler.deleteTrack(track);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(EditTrackActivity.this).deleteTrack(track);
+                    });
 
                     // Return to PDFActivity
                     finish();
@@ -166,7 +169,9 @@ public class EditTrackActivity extends AppCompatActivity{
                         Toast.makeText(EditTrackActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
                     } else {
                         track.setDesc(name);
-                        dbTrackHandler.updateTrack(track);
+                        dbExecutor.execute(() -> {
+                            DBHandler.getInstance(EditTrackActivity.this).updateTrack(track);
+                        });
                         // Return to PDFActivity
                         finish();
                     }
@@ -211,7 +216,9 @@ public class EditTrackActivity extends AppCompatActivity{
                 Toast.makeText(EditTrackActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
             } else {
                 track.setDesc(name);
-                dbTrackHandler.updateTrack(track);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(EditTrackActivity.this).updateTrack(track);
+                });
                 // Return to PDFActivity
                 finish();
             }
@@ -242,6 +249,5 @@ public class EditTrackActivity extends AppCompatActivity{
     @Override
     protected void onStop(){
         super.onStop();
-        dbTrackHandler.close();
     }
 }

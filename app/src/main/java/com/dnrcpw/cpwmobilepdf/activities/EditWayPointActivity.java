@@ -17,11 +17,15 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.dnrcpw.cpwmobilepdf.R;
-import com.dnrcpw.cpwmobilepdf.data.DBWayPtHandler;
+import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.model.WayPt;
 import com.dnrcpw.cpwmobilepdf.model.WayPts;
 
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 public class EditWayPointActivity extends AppCompatActivity {
+    private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // for database calls
     EditText editTxt;
     TextView timeStamp;
     TextView location;
@@ -33,8 +37,6 @@ public class EditWayPointActivity extends AppCompatActivity {
     String path;
     String bounds;
     String viewPort;
-    //private DBWayPtHandler db = DBWayPtHandler.getInstance(this);
-    private DBWayPtHandler dbWayPtHandler;
     private int id;
     WayPt wayPt;
     //boolean landscape;
@@ -45,7 +47,6 @@ public class EditWayPointActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        dbWayPtHandler = new DBWayPtHandler(this);
         // Read the waypoint id that was clicked on and the map name
         Intent i = this.getIntent();
         if (i.getExtras() == null){
@@ -68,58 +69,61 @@ public class EditWayPointActivity extends AppCompatActivity {
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
         }*/
-        wayPts = dbWayPtHandler.getWayPts(mapName);
-        wayPts.SortPts();
-        wayPt = wayPts.get(id);
+        dbExecutor.execute(() -> {
+            DBHandler db = DBHandler.getInstance(EditWayPointActivity.this);
+            wayPts = db.getWayPts(mapName);
+            // Switch to main thread to push the data to your UI
+            runOnUiThread(() -> {
 
-        setContentView(R.layout.activity_way_pt);
-        prevName = wayPt.getDesc();
-        editTxt = findViewById(R.id.waypt);
-        editTxt.setText(wayPt.getDesc());
-        pin = findViewById(R.id.pushPin);
-        timeStamp = findViewById(R.id.wayTime);
-        timeStamp.setText(wayPt.getTime());
-        location = findViewById(R.id.wayLocation);
-        location.setText(wayPt.getLocation());
-        pinColorGrp = findViewById(R.id.trackColor);
-        String pinColor = wayPt.getColorName();
-        cyanBtn = findViewById(R.id.cyanPin);
-        redBtn = findViewById(R.id.redPin);
-        blueBtn = findViewById(R.id.bluePin);
-        if (pinColor.equals("cyan")){
-            cyanBtn.setChecked(true);
-            pin.setImageResource(R.mipmap.ic_cyan_pin2);
-        }
-        else if (pinColor.equals("red")){
-            redBtn.setChecked(true);
-            pin.setImageResource(R.mipmap.ic_red_pin);
-        }
-        else {
-            blueBtn.setChecked(true);
-            pin.setImageResource(R.mipmap.ic_blue_pin);
-        }
-        ImageButton clearBtn = findViewById(R.id.clear_waypt);
+                wayPts.SortPts();
+                wayPt = wayPts.get(id);
 
-        // Clear waypoint name
-        clearBtn.setOnClickListener(view -> editTxt.setText(""));
+                setContentView(R.layout.activity_way_pt);
+                prevName = wayPt.getDesc();
+                editTxt = findViewById(R.id.waypt);
+                editTxt.setText(wayPt.getDesc());
+                pin = findViewById(R.id.pushPin);
+                timeStamp = findViewById(R.id.wayTime);
+                timeStamp.setText(wayPt.getTime());
+                location = findViewById(R.id.wayLocation);
+                location.setText(wayPt.getLocation());
+                pinColorGrp = findViewById(R.id.trackColor);
+                String pinColor = wayPt.getColorName();
+                cyanBtn = findViewById(R.id.cyanPin);
+                redBtn = findViewById(R.id.redPin);
+                blueBtn = findViewById(R.id.bluePin);
+                if (pinColor.equals("cyan")) {
+                    cyanBtn.setChecked(true);
+                    pin.setImageResource(R.mipmap.ic_cyan_pin2);
+                } else if (pinColor.equals("red")) {
+                    redBtn.setChecked(true);
+                    pin.setImageResource(R.mipmap.ic_red_pin);
+                } else {
+                    blueBtn.setChecked(true);
+                    pin.setImageResource(R.mipmap.ic_blue_pin);
+                }
+                ImageButton clearBtn = findViewById(R.id.clear_waypt);
 
-        // Listeners for Pin color radio buttons
-        pinColorGrp.setOnCheckedChangeListener((radioGroup, checkedId) -> {
-            if (checkedId == R.id.cyanPin){
-                wayPt.setColorName("cyan");
-                pin.setImageResource(R.mipmap.ic_cyan_pin2);
-                changed = true;
-            }
-            else if  (checkedId == R.id.redPin){
-                wayPt.setColorName("red");
-                pin.setImageResource(R.mipmap.ic_red_pin);
-                changed = true;
-            }
-            else if  (checkedId == R.id.bluePin){
-                wayPt.setColorName("blue");
-                pin.setImageResource(R.mipmap.ic_blue_pin);
-                changed = true;
-            }
+                // Clear waypoint name
+                clearBtn.setOnClickListener(view -> editTxt.setText(""));
+
+                // Listeners for Pin color radio buttons
+                pinColorGrp.setOnCheckedChangeListener((radioGroup, checkedId) -> {
+                    if (checkedId == R.id.cyanPin) {
+                        wayPt.setColorName("cyan");
+                        pin.setImageResource(R.mipmap.ic_cyan_pin2);
+                        changed = true;
+                    } else if (checkedId == R.id.redPin) {
+                        wayPt.setColorName("red");
+                        pin.setImageResource(R.mipmap.ic_red_pin);
+                        changed = true;
+                    } else if (checkedId == R.id.bluePin) {
+                        wayPt.setColorName("blue");
+                        pin.setImageResource(R.mipmap.ic_blue_pin);
+                        changed = true;
+                    }
+                });
+            });
         });
     }
 
@@ -130,7 +134,9 @@ public class EditWayPointActivity extends AppCompatActivity {
             switch (which){
                 case DialogInterface.BUTTON_POSITIVE:
                     //'DELETE' button clicked, remove map from imported maps
-                    dbWayPtHandler.deleteWayPt(wayPt);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(EditWayPointActivity.this).deleteWayPt(wayPt);
+                    });
 
                     // Return to PDFActivity
                     finish();
@@ -155,7 +161,9 @@ public class EditWayPointActivity extends AppCompatActivity {
                         Toast.makeText(EditWayPointActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
                     } else {
                         wayPt.setDesc(name);
-                        dbWayPtHandler.updateWayPt(wayPts.get(id));
+                        dbExecutor.execute(() -> {
+                            DBHandler.getInstance(EditWayPointActivity.this).updateWayPt(wayPts.get(id));
+                        });
                         // Return to PDFActivity
                         finish();
                     }
@@ -200,7 +208,9 @@ public class EditWayPointActivity extends AppCompatActivity {
                 Toast.makeText(EditWayPointActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
             } else {
                 wayPt.setDesc(name);
-                dbWayPtHandler.updateWayPt(wayPts.get(id));
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(EditWayPointActivity.this).updateWayPt(wayPts.get(id));
+                });
                 // Return to PDFActivity
                 finish();
             }
@@ -226,6 +236,5 @@ public class EditWayPointActivity extends AppCompatActivity {
     @Override
     protected void onStop(){
         super.onStop();
-        dbWayPtHandler.close();
     }
 }

@@ -30,16 +30,12 @@ import java.text.DecimalFormat;
 public class EditMapNameActivity extends AppCompatActivity {
     Integer id;
     EditText editTxt;
-    //ActionMode mActionMode;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_edit_map_name);
-
-        // Start the EDIT MENU CAB using the ActionMode.Callback defined above
-       // mActionMode = startActionMode(mActionModeCallback);
 
         String mapName;
         String str;
@@ -240,55 +236,4 @@ public class EditMapNameActivity extends AppCompatActivity {
                 return super.onOptionsItemSelected(item);
         }
     }
-
-
-    /*private ActionMode.Callback mActionModeCallback = new ActionMode.Callback() {
-        // Called when the action mode is created; startActionMode() was called
-        @Override
-        public boolean onCreateActionMode(ActionMode mode, Menu menu) {
-            // Inflate a menu resource providing context menu items
-            MenuInflater inflater = mode.getMenuInflater();
-            mode.setTitle("Edit Map Name");
-            inflater.inflate(R.menu.edit_menu, menu);
-            return true;
-        }
-
-        // Called each time the action mode is shown. Always called after onCreateActionMode, but
-        // may be called multiple times if the mode is invalidated.
-        @Override
-        public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
-            return false; // Return false if nothing is done
-        }
-
-        // Called when the user selects a contextual menu item
-        @Override
-        public boolean onActionItemClicked(ActionMode mode, MenuItem item) {
-            switch (item.getItemId()) {
-                case R.id.delete_map:
-                    // display alert dialog
-                    AlertDialog.Builder builder = new AlertDialog.Builder(EditMapNameActivity.this);
-                    builder.setTitle("Delete");
-                    builder.setMessage("Delete the imported map? This will not remove it from your device storage.").setPositiveButton("DELETE", dialogClickListener)
-                            .setNegativeButton("CANCEL",dialogClickListener).show();
-                    //mode.finish(); // Action picked, so close the CAB
-                    return true;
-
-                case R.id.home:
-                    // return to the main activity
-                    Intent mainIntent = new Intent(EditMapNameActivity.this,MainActivity.class);
-                    mainIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                    startActivity(mainIntent);
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        // Called when the user exits the action mode
-        @Override
-        public void onDestroyActionMode(ActionMode mode) {
-            mActionMode = null;
-        }
-    };*/
-
 }

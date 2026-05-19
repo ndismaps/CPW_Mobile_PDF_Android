@@ -18,6 +18,7 @@ import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.data.DBWayPtHandler;
 import com.dnrcpw.cpwmobilepdf.model.PDFMap;
+import com.dnrcpw.cpwmobilepdf.model.Tracks;
 import com.dnrcpw.cpwmobilepdf.model.WayPts;
 
 import java.io.File;
@@ -40,14 +41,11 @@ public class CustomAdapter extends BaseAdapter {
     ArrayList<PDFMap> pdfMaps = new ArrayList<>();
     Double latNow, longNow;
     //private final DBHandler db;
-    private final DBWayPtHandler wpdb;
 
-    public CustomAdapter(Context c, ArrayList<PDFMap> pdfMaps, ExecutorService dbExecutor, DBWayPtHandler wpdb) {
+    public CustomAdapter(Context c, ArrayList<PDFMap> pdfMaps, ExecutorService dbExecutor) {
         this.context = c;
         this.pdfMaps = pdfMaps;
         this.dbExecutor = dbExecutor;
-        //this.db = db;
-        this.wpdb = wpdb;
     }
 
     public void SortByName(){
@@ -110,16 +108,20 @@ public class CustomAdapter extends BaseAdapter {
         return list;
     }
 
-    public void removeWayPtsForOldMaps(){
+    public void removeWayPtsForOldMaps() throws SQLException {
         // 4-16-26 Make sure all waypoints have map files that exist. Old bug left waypoints when map was deleted!
-        ArrayList <String> existingMapNames = getAllMapNames();
-        ArrayList <String> wayPtMapNames = wpdb.getAllMapNames();
-        for (int i = 0; i < wayPtMapNames.size(); i++) {
-            if (!existingMapNames.contains(wayPtMapNames.get(i))){
-                // map no longer exists. Remove waypoints for this map
-                wpdb.deleteWayPts(wayPtMapNames.get(i));
+
+        dbExecutor.execute(() -> {
+            DBHandler db = DBHandler.getInstance(context);
+            ArrayList <String> wayPtMapNames = db.getAllMapNames();
+            ArrayList <String> existingMapNames = getAllMapNames();
+            for (int i = 0; i < wayPtMapNames.size(); i++) {
+                if (!existingMapNames.contains(wayPtMapNames.get(i))){
+                    // map no longer exists. Remove waypoints for this map
+                    db.deleteWayPts(wayPtMapNames.get(i));
+                }
             }
-        }
+        });
     }
     public void checkIfExists() {
         // Check if the pdf exists in App directory. If not remove it from the database. Called by MainActivity.
@@ -138,11 +140,12 @@ public class CustomAdapter extends BaseAdapter {
                             Toast.makeText(context, context.getResources().getString(R.string.problemRemovingMap), Toast.LENGTH_LONG).show();
                         }
                     }
+                    final int id = i;
                     dbExecutor.execute(() -> {
-                        DBHandler.getInstance(context).deleteMap(map);
+                        DBHandler db = DBHandler.getInstance(context);
+                        db.deleteMap(map);
+                        db.deleteWayPt(pdfMaps.get(id).getName());
                     });
-                    //db.deleteMap(map);
-                    wpdb.deleteWayPt(pdfMaps.get(i).getName());
                     pdfMaps.remove(i);
                     // delete thumbnail image also
                     if (map.getThumbnail() != null) {
@@ -324,28 +327,32 @@ public class CustomAdapter extends BaseAdapter {
                         map.setName(name);
                         map.setPath(sdcard + "/" + fileName);
                         dbExecutor.execute(() -> {
-                            DBHandler.getInstance(context).updateMap(map);
+                            DBHandler db = DBHandler.getInstance(context);
+                            // update waypoint map names
+                            try{
+                                db.updateMap(map); // update map table in database
+                                WayPts wayPts = db.getWayPts(oldMapName);
+                                for (int j = 0; j < wayPts.size(); j++) {
+                                    wayPts.get(j).setName(name); // update class
+                                    db.updateWayPt(wayPts.get(j)); // update waypts table in database
+                                }
+                                // Update track map names
+                                Tracks tracks = db.getTracks(oldMapName);
+                                for (int j = 0; j < tracks.size(); j++) {
+                                    tracks.get(j).setMapName(name); // update tracks class
+                                    db.updateTrack(tracks.get(j)); // update tracks table in database
+                                }
+                            } catch (Exception e) {
+                                Toast.makeText(context, context.getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
+                            }
                         });
-                        //db.updateMap(map);
-
-                        // update waypoint map names
-                        WayPts wayPts = wpdb.getWayPts(oldMapName);
-                        for (int j=0; j<wayPts.size(); j++){
-                            wayPts.get(j).setName(name); // update class
-                            wpdb.updateWayPt(wayPts.get(j)); // update database
-                        }
-
-                        // TODO update track map names
-                        /// ***********TODO*********
                     } catch (Exception e) {
-                        //db.close();
                         Toast.makeText(context, "Error renaming: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     }
                     notifyDataSetChanged();
                     break;
                 }
             }
-            //db.close();
         } catch (IndexOutOfBoundsException e) {
             Toast.makeText(context, "Problem renaming map: " + e.getMessage(), Toast.LENGTH_LONG).show();
         } catch (SQLException e) {
@@ -375,11 +382,11 @@ public class CustomAdapter extends BaseAdapter {
                     }
                 }
                 dbExecutor.execute(() -> {
-                    DBHandler.getInstance(context).deleteMap(map);
+                    DBHandler db = DBHandler.getInstance(context);
+                    db.deleteMap(map);
+                    db.deleteTracks(map.getName()); // delete all tracks in this map
+                    db.deleteWayPt(map.getName());// delete waypoints in this map
                 });
-                //db.deleteMap(map);
-                wpdb.deleteWayPt(map.getName());// delete waypoints
-                // TODO remove tracks *********************************************
                 pdfMaps.remove(i);
                 // delete thumbnail image also
                 if (map.getThumbnail() != null) {
@@ -393,8 +400,6 @@ public class CustomAdapter extends BaseAdapter {
                 }
             }
             notifyDataSetChanged();
-            //db.close();
-            //wpdb.close();
         } catch (IndexOutOfBoundsException e) {
             Toast.makeText(context, "Problem removing map: " + e.getMessage(), Toast.LENGTH_LONG).show();
         } catch (SQLException e){
@@ -405,8 +410,6 @@ public class CustomAdapter extends BaseAdapter {
     public void removeItem(int id) {
         // remove item i from the list and the database
         try {
-            //DBHandler db = new DBHandler(c);
-            //DBWayPtHandler dbwaypt = new DBWayPtHandler(c);
             for (int i = 0; i < this.pdfMaps.size(); i++) {
                 if (pdfMaps.get(i).getId() == id) {
                     PDFMap map = pdfMaps.get(i);
@@ -419,11 +422,12 @@ public class CustomAdapter extends BaseAdapter {
                     }
                     //Toast.makeText(context,"Deleting: "+map.getName(), Toast.LENGTH_LONG).show();
                     dbExecutor.execute(() -> {
-                        DBHandler.getInstance(context).deleteMap(map);
+                        DBHandler db = DBHandler.getInstance(context);
+                        db.deleteMap(map);
+                        db.deleteWayPts(map.getName());
+                        db.deleteTracks(map.getName());
                     });
-                    //db.deleteMap(map);
-                    wpdb.deleteWayPts(map.getName());
-                    // TODO remove tracks **********************************************
+
                     pdfMaps.remove(i);
                     // delete thumbnail image also
                     String imgPath = map.getThumbnail();
