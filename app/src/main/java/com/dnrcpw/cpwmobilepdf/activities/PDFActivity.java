@@ -1,7 +1,6 @@
 package com.dnrcpw.cpwmobilepdf.activities;
 
 import static android.graphics.Color.argb;
-import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -10,7 +9,6 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
-import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.ServiceConnection;
 import android.database.SQLException;
@@ -27,6 +25,7 @@ import android.hardware.SensorManager;
 import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.text.TextPaint;
@@ -57,14 +56,12 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.widget.PopupMenu;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 import androidx.core.content.res.ResourcesCompat;
 
 import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.data.DBWayPtHandler;
-//import com.dnrcpw.cpwmobilepdf.data.DBTrackHandler;
+import com.dnrcpw.cpwmobilepdf.data.ToastUtils;
 import com.dnrcpw.cpwmobilepdf.model.PDFMap;
 import com.dnrcpw.cpwmobilepdf.model.WayPt;
 import com.dnrcpw.cpwmobilepdf.model.WayPts;
@@ -72,12 +69,6 @@ import com.dnrcpw.cpwmobilepdf.model.TrackSegment;
 import com.dnrcpw.cpwmobilepdf.model.Track;
 import com.dnrcpw.cpwmobilepdf.model.Tracks;
 import com.github.barteksc.pdfviewer.PDFView;
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.LocationResult;
-import com.google.android.gms.location.LocationServices;
-import com.google.android.gms.location.Priority;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -176,9 +167,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     //private float mCurrentDegree = 0f;
     private WayPts wayPts;
     private String mapName;
-    private DBWayPtHandler db;
-    //private DBHandler db2;
-    //private DBTrackHandler dbTrack;
     private Boolean markCurrent;
     private Tracks tracks;
     private int currentTrackID = -1;
@@ -332,7 +320,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         try {
             // Check that values were passed
             if (i.getExtras() == null) {
-                Toast.makeText(PDFActivity.this, "Can't display map, no map specifications were found.", Toast.LENGTH_LONG).show();
+                ToastUtils.showExtendedToast(PDFActivity.this, "Can't display map, no map specifications were found.");
+                //Toast.makeText(PDFActivity.this, "Can't display map, no map specifications were found.", Toast.LENGTH_LONG).show();
                 finish();
                 return;
             }
@@ -346,14 +335,15 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             try {
                 bounds = i.getExtras().getString("BOUNDS"); // lat1 long1 lat2 long1 lat2 long2 lat1 long2
             }catch (NullPointerException e){
-                Toast.makeText(PDFActivity.this,"Could not read page lat/long.",Toast.LENGTH_SHORT).show();
+                ToastUtils.showExtendedToast(PDFActivity.this,"Could not read page lat/long.");
+                //Toast.makeText(PDFActivity.this,"Could not read page lat/long.",Toast.LENGTH_SHORT).show();
                 finish();
                 return;
             }
             assert bounds != null;
             getBoundsVariables();
         } catch (AssertionError | Exception ae){
-            Toast.makeText(PDFActivity.this, "Trouble reading lat/long from Geo PDF. Read: " + bounds, Toast.LENGTH_LONG).show();
+            ToastUtils.showExtendedToast(PDFActivity.this, "Trouble reading lat/long from Geo PDF. Read: " + bounds);
             finish();
             return;
         }
@@ -362,14 +352,14 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             try {
                 mediaBox = Objects.requireNonNull(i.getExtras()).getString("MEDIABOX");
             } catch (NullPointerException e) {
-                Toast.makeText(PDFActivity.this, "Could not read page size.", Toast.LENGTH_SHORT).show();
+                ToastUtils.showExtendedToast(PDFActivity.this, "Could not read page size.");
                 finish();
                 return;
             }
             assert mediaBox != null;
             getMediaBoxVariables();
         } catch (AssertionError | Exception ae) {
-            Toast.makeText(PDFActivity.this, "Trouble reading mediaBox page boundaries from Geo PDF. Read: " + mediaBox, Toast.LENGTH_LONG).show();
+            ToastUtils.showExtendedToast(PDFActivity.this, "Trouble reading mediaBox page boundaries from Geo PDF. Read: " + mediaBox);
             finish();
             return;
         }
@@ -383,13 +373,13 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             try {
                 viewPort = Objects.requireNonNull(i.getExtras()).getString("VIEWPORT");
             } catch (NullPointerException e) {
-                Toast.makeText(PDFActivity.this, "Trouble reading viewport from Geo PDF.", Toast.LENGTH_LONG).show();
+                ToastUtils.showExtendedToast(PDFActivity.this, "Trouble reading viewport from Geo PDF.");
             }
             assert  viewPort != null;
             getViewPortVariables();
 
         } catch (AssertionError | Exception ae) {
-            Toast.makeText(PDFActivity.this, "Trouble reading viewPort margins from Geo PDF. Read: " + viewPort, Toast.LENGTH_LONG).show();
+            ToastUtils.showExtendedToast(PDFActivity.this, "Trouble reading viewPort margins from Geo PDF. Read: " + viewPort);
             finish();
             return;
         }
@@ -400,7 +390,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             mAccelerometer = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             mMagnetometer = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
         } catch (NullPointerException e) {
-            Toast.makeText(PDFActivity.this, "Trouble reading phone orientation", Toast.LENGTH_LONG).show();
+            ToastUtils.showExtendedToast(PDFActivity.this, "Trouble reading phone orientation");
         }
 
         //PDFVIEW WILL DISPLAY OUR PDFS
@@ -410,172 +400,11 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         // SET UP LOCATION SERVICES
         try {
             locationReceiver = new PDFActivity.LocationUpdateReceiver(); // new TrackingService
-            //mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
         } catch (Exception e){
             // no gps service
+            ToastUtils.showExtendedToast(PDFActivity.this,"No GPS Service, cannot show you location.");
             return;
         }
-
-        // TODO remove
-        // UPDATE CURRENT POSITION
-        /*mLocationCallback = new LocationCallback() {
-            @Override
-            public void onLocationResult(LocationResult locationResult) {
-                //Log.d("LocationCallback","updating location, refreshing waypoints");
-                for (Location location : locationResult.getLocations()) {
-                    // Update UI with location data
-
-                    // save last location so we can see how much they moved
-                    latBefore = latNow;
-                    longBefore = longNow;
-
-
-                    //GeomagneticField geoField;
-                    latNow = location.getLatitude();
-                    longNow = location.getLongitude();
-
-                    // Debug make it simulate user movement to draw a track
-                    if (latBefore != -1){
-                        Random rand = new Random();
-                        int randomInt = 1;
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                            randomInt = rand.nextInt(1,9);
-                        }
-                        if (randomInt > 7) randomInt = randomInt * -1;
-                        double r = (double)randomInt / 10000.0;
-                        latNow =  latBefore + r;
-                        randomInt = 1;
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                            randomInt = rand.nextInt(1,9);
-                        }
-                        if (randomInt > 7) randomInt = randomInt * -1;
-                        r = (double)randomInt / 10000.0;
-                        longNow = longBefore + r;
-                    }
-
-                    //bearing = location.getBearing(); // 0-360 degrees 0 at North
-                    accuracy = location.getAccuracy();
-                    // Makes top of map (north) off
-                    //geoField = new GeomagneticField(
-                    //        Double.valueOf(latNow).floatValue(),
-                    //        Double.valueOf(longNow).floatValue(),
-                    //        Double.valueOf(location.getAltitude()).floatValue(),
-                    //        System.currentTimeMillis()
-                    //);
-                    //bearing += geoField.getDeclination(); // Adjust for declination - difference between magnetic north and true north. Phone returns magnetic north.
-                    //bearing -= 90; // Adjust by 90 degrees. Canvas needs 0 at East, this returns 0 at North
-                    //if (bearing<0) bearing = 360 + bearing;
-
-                    // debug
-                    //TextView bTxt = (TextView)findViewById(R.id.debug);
-                    //bTxt.setText(Float.toString(bearing)+"  adjust: "+Float.toString((geoField.getDeclination()))+ "  bear: "+Float.toString(location.getBearing()));
-
-                    pdfView.invalidate();
-                    //
-                    // Load Adjacent Maps?
-                    // check if we need to display load adjacent maps button because current location is within 1/4 mile of other maps
-                    //
-
-                    // OLD WAY when current location goes off edge. Problem USGS and FS maps have a margin CPW maps do not. Show when close to edge.
-                    //double percentX = 0.13;
-                    //double percentY = 0.10;
-                    //******************************
-                    // DEBUG force current location
-                    //******************************
-                    //latNow = lat2 - latDiff*percentY;
-                    //longNow = long2 - longDiff*percentX;
-                    //latNow = lat1 + latDiff*percentY;
-                    //longNow = long1 + longDiff*percentX;
-                    //if (loadAdjacentMaps && onMap && (latNow < (lat1 + latDiff*percentX)  || latNow > (lat2 - latDiff*percentX)  || longNow < (long1 + longDiff*percentY) || longNow > (long2 - longDiff*percentY))){
-
-                    double quarterMileInDegrees = 0.00458; // 1 degree = 54.6 miles
-                    if (loadAdjacentMaps &&
-                        latNow > (lat1 - quarterMileInDegrees) &&
-                        latNow < (lat2 + quarterMileInDegrees) &&
-                        longNow > (long1 - quarterMileInDegrees) &&
-                        longNow < (long2 + quarterMileInDegrees)){
-                        // Get list of all available maps and see if the current location is on or within a 1/4 mile of one or more of them
-                        ArrayList<Integer> mapIds = new ArrayList<>();// PDF maps that the current location is on
-                        if (maps == null) return;
-                        for (int i = 0; i < maps.size(); i++) {
-                            PDFMap map = maps.get(i);
-                            if (map.getName().equals(mapName)) continue; // don't list current map
-                            String bounds = map.getBounds(); // lat1 long1 lat2 long1 lat2 long2 lat1 long2
-                            if (bounds == null || bounds.isEmpty())
-                                return; // it will be 0 length if it is importing
-                            bounds = bounds.trim(); // remove leading and trailing spaces
-
-                            // Get Latitude, Longitude bounds.
-                            // aLat1 and aLong1 are the smallest values SW corner
-                            // aLat2 and aLong2 are the largest NE corner
-                            String[] arrLatLong = bounds.split(" ");
-                            // convert strings to double
-                            Double[] LatLong = new Double[arrLatLong.length];
-                            for (int l = 0; l < arrLatLong.length; l++) {
-                                LatLong[l] = Double.parseDouble(arrLatLong[l]);
-                            }
-                            // Find the smallest and largest values
-                            double aLat1 = LatLong[0];
-                            double aLong1 = LatLong[1];
-                            double aLat2 = LatLong[0];
-                            double aLong2 = LatLong[1];
-                            for (int l = 0; l < LatLong.length; l = l + 2) {
-                                if (LatLong[l] < aLat1) aLat1 = LatLong[l];
-                                if (LatLong[l] > aLat2) aLat2 = LatLong[l];
-                                if (LatLong[l + 1] < aLong1) aLong1 = LatLong[l + 1];
-                                if (LatLong[l + 1] > aLong2) aLong2 = LatLong[l + 1];
-                            }
-
-                            // Is current location on this map? Add it to mapIds (array of maps that contain the current location)
-                            // On map
-                            if (latNow >= aLat1 && latNow <= aLat2 && longNow >= aLong1 && longNow <= aLong2) {
-                                mapIds.add(i);
-                            }
-                        }
-                        //if (mapIds.size()==0){
-                            //Toast.makeText(PDFActivity.this,"No adjacent maps found to load.",Toast.LENGTH_SHORT).show();
-                        //}
-                        //else if (mapIds.size()==1){
-                            // Only one map found that contains the current location. Load it.
-                            //loadNewMap(maps, mapIds.get(0));
-                            //Toast.makeText(PDFActivity.this,"Now showing adjacent map.",Toast.LENGTH_SHORT).show();
-                        //}
-                        if (!mapIds.isEmpty()) {
-                            // Several maps found. Display button and menu to load new map.
-                            //Toast.makeText(PDFActivity.this,"Several adjacent maps are available",Toast.LENGTH_SHORT).show();
-                            menuBtn.setVisibility(View.VISIBLE);
-                            adjacentMapsBtnShowing = true; // if they don't click on the button but click elsewhere, use this to hide the menuBtn in pdfView tap event.
-                            menuBtn.setOnClickListener(view -> {
-                                PopupMenu popup = new PopupMenu(PDFActivity.this, menuBtn);
-                                popup.getMenuInflater().inflate(R.menu.adjacent_maps_menu, popup.getMenu());
-                                for (int j = 0; j < mapIds.size(); j++) {
-                                    // add(groupId, itemId, order, title) Pass the index into maps array as the itemId
-                                    popup.getMenu().add(1, mapIds.get(j), j + 1, maps.get(mapIds.get(j)).getName());
-                                }
-
-                                popup.show();
-                                popup.setOnMenuItemClickListener(item -> {
-                                    // load the user selected map
-                                    int i1 = item.getItemId();
-                                    loadNewMap(maps, i1);
-                                    return true;
-                                });
-                                // hide the Load Adjacent Maps button
-                                popup.setOnDismissListener(menu -> {
-                                    Button menuBtn = findViewById(R.id.load_adjacent_maps);
-                                    menuBtn.setVisibility(View.GONE);
-                                    adjacentMapsBtnShowing = false;
-                                });
-                            });
-                        }
-                    }
-                    else{
-                        menuBtn.setVisibility(View.GONE);
-                        adjacentMapsBtnShowing = false;
-                    }
-                }
-            }
-        };*/
 
         setupColorsMoveIcon();
         setupPDFView();
@@ -607,29 +436,35 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         getMediaBoxVariables();
         viewPort = maps.get(id).getViewport();
         getViewPortVariables();
-        wayPts = db.getWayPts(mapName);
-        wayPts.SortPts();
         dbExecutor.execute(() -> {
             try {
                 DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                wayPts = db.getWayPts(mapName);
                 tracks = db.getTracks(mapName);
             }catch (SQLException exc){
-                Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(PDFActivity.this, "Failed to read tracks from database. " + exc.getMessage(), Toast.LENGTH_LONG).show();
+                });
             }catch (Exception exc){
-                Toast.makeText(PDFActivity.this, "Failed to read tracks from database. "+exc.getMessage(), Toast.LENGTH_LONG).show();
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(PDFActivity.this, "Failed to read tracks from database. " + exc.getMessage(), Toast.LENGTH_LONG).show();
+                });
             }
+            // Switch to main thread to push the data to your UI
+            runOnUiThread(() -> {
+                wayPts.SortPts();
+                clickedWP = -1; // hide balloon
+                clickedTrack = -1; // hide balloon for tracks
+                clickTrackX = -1.0f;
+                clickTrackY = -1.0f;
+                // set orientation for this map
+                portraitLocked = maps.get(id).getMapOrientation().equals("portrait");
+                landscapeLocked = maps.get(id).getMapOrientation().equals("landscape");
+                action_landscape.setChecked(landscapeLocked);
+                action_portrait.setChecked(portraitLocked);
+                setupPDFView();
+            });
         });
-
-        clickedWP = -1; // hide balloon
-        clickedTrack = -1; // hide balloon for tracks
-        clickTrackX = -1.0f;
-        clickTrackY = -1.0f;
-        // set orientation for this map
-        portraitLocked = maps.get(id).getMapOrientation().equals("portrait");
-        landscapeLocked = maps.get(id).getMapOrientation().equals("landscape");
-        action_landscape.setChecked(landscapeLocked);
-        action_portrait.setChecked(portraitLocked);
-        setupPDFView();
     }
     private void getBoundsVariables(){
         bounds = bounds.trim(); // remove leading and trailing spaces
@@ -990,29 +825,36 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                             String location = String.format(Locale.US,"%.5f, %.5f", latitude,longitude);
                             int num = findAUniqueName();
                             WayPt wayPt = new WayPt(mapName, "Waypoint " + num, (float) longitude, (float) latitude, "blue", location);
-                            try {
-                                db.addWayPt(wayPt);
-                            } catch (SQLException exc) {
-                               // wayPts.remove((float)longitude,(float)latitude);
-                                Toast.makeText(PDFActivity.this, "Failed to save waypoint. "+exc.getMessage(), Toast.LENGTH_LONG).show();
-                                clickedWP = -1;
-                                newWP = false;
-                                addWayPtFlag=false;
-                                return false;
-                            }
-                            wayPts = db.getWayPts(mapName);
-                            wayPts.SortPts();
+                            dbExecutor.execute(() -> {
+                                try {
+                                    DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                                    db.addWayPt(wayPt);
+                                    wayPts = db.getWayPts(mapName);
+                                } catch (SQLException exc) {
+                                    // wayPts.remove((float)longitude,(float)latitude);
+                                    new Handler(Looper.getMainLooper()).post(() -> {
+                                        ToastUtils.showExtendedToast(PDFActivity.this, "Failed to save waypoint. " + exc.getMessage());
+                                    });
+                                    clickedWP = -1;
+                                    newWP = false;
+                                    addWayPtFlag = false;
+                                }
+                                // Switch to main thread to push the data to your UI
+                                runOnUiThread(() -> {
+                                    wayPts.SortPts();
+                                });
+                            });
                             // get the index of the new waypoint
-                            for (i1 = 0; i1 < wayPts.size(); i1++) {
-                                if (wayPts.get(i1).getX() == (float) longitude && wayPts.get(i1).getY() == (float) latitude) {
+                            for (int i2 = 0; i2 < wayPts.size(); i2++) {
+                                if (wayPts.get(i2).getX() == (float) longitude && wayPts.get(i2).getY() == (float) latitude) {
                                     lastClickedWP = clickedWP;
-                                    clickedWP = i1;
+                                    clickedWP = i2;
                                     //Log.d("onTap","Added to database, clickedWP="+clickedWP);
                                     break;
                                 }
                             }
                             // reset add waypoint button
-                            addWayPtFlag=false;
+                            addWayPtFlag = false;
                         }
                     }
                     // hide old balloon
@@ -1167,13 +1009,11 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                             }
 
                             // Add to the current track's path with current location if on map
-                            if (latBefore != -1 && currentTrackID != -1 && t == currentTrackID &&
+                            /*if (latBefore != -1 && currentTrackID != -1 && t == currentTrackID &&
                                     (latNow >= lat1 && latNow <= lat2) &&
                                     (longNow >= long1 && longNow <= long2)) {
                                 currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
-                                // Save new line segment in database
-                            //    dbTrack.updateTrack(currentTrack);// move to LocationUpdateReceiver
-                            }
+                            }*/
                             // Draw all tracks
                             List<TrackSegment> segments = currentTrack.getTrackSegments();
                             for (int i = 0; i < currentTrack.getTrackSegments().size(); i++) {
@@ -1201,11 +1041,16 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         int num = findAUniqueName();
                         WayPt wayPt = wayPts.add(mapName, "Waypoint " + num, theLong, theLat, "red", location);
                         wayPts.SortPts();
-                        try {
-                            db.addWayPt(wayPt);
-                        } catch (SQLException exc) {
-                            Toast.makeText(PDFActivity.this, "Failed to add pt to database.", Toast.LENGTH_LONG).show();
-                        }
+                        dbExecutor.execute(() -> {
+                            DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                            try {
+                                db.addWayPt(wayPt);
+                            } catch (SQLException exc) {
+                                new Handler(Looper.getMainLooper()).post(() -> {
+                                    ToastUtils.showExtendedToast(PDFActivity.this, "Failed to add waypoint to database.");
+                                });
+                            }
+                        });
                         for (int i1 = 0; i1 < wayPts.size(); i1++) {
                             if (wayPts.get(i1).getX() == theLong && wayPts.get(i1).getY() == theLat) {
                                 lastClickedWP = clickedWP;
@@ -1362,7 +1207,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 wait.setVisibility(View.GONE);
             }).load();
         } else {
-            Toast.makeText(PDFActivity.this, "Cannot read file: " + path, Toast.LENGTH_LONG).show();
+            ToastUtils.showExtendedToast(PDFActivity.this, "Cannot read file: " + path);
         }
     }
     /*public static float px2dp(Resources resource, float px) {
@@ -1462,10 +1307,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     wait.setVisibility(View.GONE);
                     return false;
                 } catch (OutOfMemoryError memoryError) {
-                    Toast.makeText(PDFActivity.this, "Out of memory", Toast.LENGTH_SHORT).show();
+                    ToastUtils.showExtendedToast(PDFActivity.this, "Out of memory");
                     return false;
                 } catch (Exception error) {
-                    Toast.makeText(PDFActivity.this, "Error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+                    ToastUtils.showExtendedToast(PDFActivity.this, "Error: " + error.getMessage());
                     return false;
                 }
             }
@@ -1798,7 +1643,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     @Override
     protected void onResume() {
         super.onResume();
-
         // Start Location Services Receiver
         // Register receiver when UI is visible
         IntentFilter filter = new IntentFilter("ACTION_LOCATION_UPDATE");
@@ -1808,83 +1652,68 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         } else {
             registerReceiver(locationReceiver, filter);
         }
-        // TODO remove
-        //startLocationUpdates();
 
-        // read user preferences from DBHandler SETTINGS_TABLE
+        // read user preferences
         // read waypoints and tracks for this map
-            db = new DBWayPtHandler(PDFActivity.this);
-
-            dbExecutor.execute(() -> {
-                DBHandler db2 = DBHandler.getInstance(PDFActivity.this);
-                loadAdjacentMaps = db2.getLoadAdjMaps() != 0;
-                if (stateShowAllWayPts == -1)
-                    showAllWayPts = db2.getShowWaypoints() != 0;
-                if (stateShowTracks == -1)
-                    showTracks = db2.getShowTracks() != 0;
-                showAllWayPtLabels = db2.getShowAllWaypointLabels() != 0;
-                myMap = db2.getMap(mapName);
-                // set orientation for this map
-                portraitLocked = myMap.getMapOrientation().equals("portrait");
-                landscapeLocked = myMap.getMapOrientation().equals("landscape");
-                // get all maps for load adjacent maps and lock map in portrait or landscape
-                try {
-                    maps = db2.getAllMaps();
-                }catch (SQLException | NullPointerException e) {
-                    Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(),Toast.LENGTH_LONG).show();
-                }
-                // Update Tracks
-                try {
-                    db2.getTracks(mapName);
-                } catch (Exception e){
-                    Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(),Toast.LENGTH_LONG).show();
-                }
-            });
-            /*db2 = new DBHandler(PDFActivity.this);
+        dbExecutor.execute(() -> {
+            DBHandler db2 = DBHandler.getInstance(PDFActivity.this);
             loadAdjacentMaps = db2.getLoadAdjMaps() != 0;
             if (stateShowAllWayPts == -1)
                 showAllWayPts = db2.getShowWaypoints() != 0;
             if (stateShowTracks == -1)
                 showTracks = db2.getShowTracks() != 0;
             showAllWayPtLabels = db2.getShowAllWaypointLabels() != 0;
-            // set orientation for this map
             myMap = db2.getMap(mapName);
+            // set orientation for this map
             portraitLocked = myMap.getMapOrientation().equals("portrait");
             landscapeLocked = myMap.getMapOrientation().equals("landscape");
             // get all maps for load adjacent maps and lock map in portrait or landscape
             try {
                 maps = db2.getAllMaps();
             }catch (SQLException | NullPointerException e) {
-                Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(),Toast.LENGTH_LONG).show();
-            }*/
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+            // Update Tracks
+            try {
+                tracks = db2.getTracks(mapName);
+            } catch (Exception e){
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
             // Update Waypoints
-            wayPts = db.getWayPts(mapName);
+            wayPts = db2.getWayPts(mapName);
+            // Switch to main thread to push the data to your UI
+            runOnUiThread(() -> {
+                wayPts.SortPts();
+                clickedWP = -1; // hide balloon
+                lastClickedWP = -1;
+                clickedTrack = -1;
+                clickTrackX = -1.0f;
+                clickTrackY = -1.0f;
+                adjustWP = -1;
+                newWP = false;
+                adjacentMapsBtnShowing = false;
+                // Start Screen Sensor Listener
+                mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_UI);
+                mSensorManager.registerListener(this, mMagnetometer, SensorManager.SENSOR_DELAY_UI);
 
-        wayPts.SortPts();
-        clickedWP = -1; // hide balloon
-        lastClickedWP = -1;
-        clickedTrack = -1;
-        clickTrackX = -1.0f;
-        clickTrackY = -1.0f;
-        adjustWP = -1;
-        newWP = false;
-        adjacentMapsBtnShowing = false;
-        // Start Screen Sensor Listener
-        mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_UI);
-        mSensorManager.registerListener(this, mMagnetometer, SensorManager.SENSOR_DELAY_UI);
-
-        // if user had checked lock orientation, then apply it when return from help or edit waypoint 6/22/22
-        if (landscapeLocked){
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
-        }
-        else if (portraitLocked){
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
-        }
-        else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        }
+                // if user had checked lock orientation, then apply it when return from help or edit waypoint 6/22/22
+                if (landscapeLocked){
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
+                }
+                else if (portraitLocked){
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
+                }
+                else {
+                    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                }
+            });
+        });
     }
 
     /*@Override
@@ -1967,19 +1796,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 longNow = intent.getDoubleExtra("extra_longitude", 0.0);
                 accuracy = intent.getFloatExtra("extra_accuracy", 0.0f);
 
-                // Add to the current track's path with current location if on map
-                Track currentTrack = new Track();
-                if (latBefore != -1 && currentTrackID != -1 &&
-                        (latNow >= lat1 && latNow <= lat2) &&
-                        (longNow >= long1 && longNow <= long2)) {
-                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
-                    // Save new line segment in database
-                    dbExecutor.execute(() -> {
-                        DBHandler db = DBHandler.getInstance(PDFActivity.this);
-                        db.updateTrack(currentTrack);
-                    });
-                }
-
                 // **Debug** make it simulate user movement to draw a track
                 if (latBefore != -1){
                     Random rand = new Random();
@@ -1997,6 +1813,20 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     if (randomInt > 7) randomInt = randomInt * -1;
                     r = (double)randomInt / 10000.0;
                     longNow = longBefore + r;
+                }
+
+                // Add to the current track's path with current location if on map
+                if (latBefore != -1 && currentTrackID != -1 &&
+                        (latNow >= lat1 && latNow <= lat2) &&
+                        (longNow >= long1 && longNow <= long2)) {
+                    //Track currentTrack = new Track();
+                    Track currentTrack = tracks.get(currentTrackID);
+                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
+                    // Save new line segment in database
+                    dbExecutor.execute(() -> {
+                        DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                        db.updateTrack(currentTrack);
+                    });
                 }
 
                 //bearing = location.getBearing(); // 0-360 degrees 0 at North
@@ -2454,7 +2284,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 showAllWayPts = true;
                 dbExecutor.execute(() -> {
                     DBHandler.getInstance(PDFActivity.this).setShowWaypoints(1);
-                });;
+                });
             }
         }
         // Show Tracking
@@ -2665,22 +2495,29 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         int num = findAUniqueName();
                         WayPt wayPt = wayPts.add(mapName, "Waypoint " + num, (float) longitude, (float) latitude, "blue", location);
                         wayPts.SortPts();
-                        try {
-                            db.addWayPt(wayPt);
-                            // get the index of the new waypoint
-                            for (int i1 = 0; i1 < wayPts.size(); i1++) {
-                                if (wayPts.get(i1).getX() == (float) longitude && wayPts.get(i1).getY() == (float) latitude) {
-                                    lastClickedWP = clickedWP;
-                                    clickedWP = i1;
-                                    break;
-                                }
+                        final float finalLongitude = (float) longitude;
+                        final float finalLatitude = (float) latitude;
+                        dbExecutor.execute(() -> {
+                            DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                            try {
+                                db.addWayPt(wayPt);
+                            } catch (SQLException exc) {
+                                new Handler(Looper.getMainLooper()).post(() -> {
+                                    Toast.makeText(PDFActivity.this, "Failed to save waypoint. " + exc.getMessage(), Toast.LENGTH_LONG).show();
+                                    wayPts.remove(finalLongitude, finalLatitude);
+                                    clickedWP = -1;
+                                    newWP = false;
+                                    addWayPtFlag = false;
+                                });
                             }
-                        } catch (SQLException exc) {
-                            Toast.makeText(PDFActivity.this, "Failed to save waypoint. " + exc.getMessage(), Toast.LENGTH_LONG).show();
-                            wayPts.remove((float) longitude, (float) latitude);
-                            clickedWP = -1;
-                            newWP = false;
-                            addWayPtFlag = false;
+                        });
+                        // get the index of the new waypoint
+                        for (int i1 = 0; i1 < wayPts.size(); i1++) {
+                            if (wayPts.get(i1).getX() == (float) longitude && wayPts.get(i1).getY() == (float) latitude) {
+                                lastClickedWP = clickedWP;
+                                clickedWP = i1;
+                                break;
+                            }
                         }
                         dialogLatLong.dismiss();
                     }
@@ -2787,11 +2624,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
     // Turn tracking odd
     private void turnTrackingOff(){
+        if (addTrackFlag)
+            Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOff), Toast.LENGTH_LONG).show();
         addTrackFlag = false; // tracking icon in top menu is inactive
         trackMenuItem.setIcon(R.drawable.ic_gray_track); // set to gray track
         currentTrackID = -1;
         clickedTrack = -1;
-        Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOff), Toast.LENGTH_LONG).show();
     }
     // ADJUST WAYPOINT MENU
     private final ActionMode.Callback mActionModeCallback = new ActionMode.Callback() {
@@ -2837,7 +2675,9 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 wayPt.setY((float) latitude);
                 String location = String.format(Locale.US,"%.5f, %.5f", latitude,longitude);
                 wayPt.setLocation(location);
-                db.updateWayPt(wayPt);
+                dbExecutor.execute(() -> {
+                    DBHandler.getInstance(PDFActivity.this).updateWayPt(wayPt);
+                });
                 mode.finish(); //hide menu
                 return false;
             }
@@ -2874,7 +2714,9 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //'DELETE' button clicked, remove waypoint or track
                     // delete waypoint
                     WayPt wayPt = wayPts.get(del_id);
-                    db.deleteWayPt(wayPt);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(PDFActivity.this).deleteWayPt(wayPt);
+                    });
                     wayPts.remove(wayPt.getX(), wayPt.getY());
                     deleting = false;
                     pdfView.invalidate();
@@ -2901,7 +2743,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         DBHandler db = DBHandler.getInstance(PDFActivity.this);
                         db.deleteTrack(track);
                     });
-                    //dbTrack.deleteTrack(track);
                     tracks.remove(track);
                     deleting = false;
                     clickedTrack = -1;
@@ -2927,7 +2768,9 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             switch (which){
                 case DialogInterface.BUTTON_POSITIVE:
                     //'DELETE' button clicked, remove map from imported maps
-                    db.deleteWayPts(mapName);
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(PDFActivity.this).deleteWayPts(mapName);
+                    });
                     wayPts.removeAll();
                     deleting = false;
                     pdfView.invalidate();

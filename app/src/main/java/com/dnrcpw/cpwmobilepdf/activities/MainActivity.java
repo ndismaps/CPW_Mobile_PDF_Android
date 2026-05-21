@@ -745,11 +745,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
 
         // clean up waypoints, bug left old maps that no longer exist, remove these from db
-        try {
-            myAdapter.removeWayPtsForOldMaps();
-        } catch (SQLException e) {
-            Toast.makeText(getApplicationContext(), "Error reading database: "+e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+        myAdapter.removeWayPtsForOldMaps();
     }
 
     // ...................

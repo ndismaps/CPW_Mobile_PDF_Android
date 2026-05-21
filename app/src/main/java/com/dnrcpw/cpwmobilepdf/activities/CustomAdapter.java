@@ -6,6 +6,8 @@ import android.database.SQLException;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.location.Location;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,6 +25,7 @@ import com.dnrcpw.cpwmobilepdf.model.WayPts;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference; // to trap SQLException in dbExecutor.execute
 import java.util.Collections;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
@@ -37,8 +40,8 @@ import java.util.concurrent.ExecutorService;
 
 public class CustomAdapter extends BaseAdapter {
     private final Context context;
-    private ExecutorService dbExecutor; // Pass this from the Activity
-    ArrayList<PDFMap> pdfMaps = new ArrayList<>();
+    final private ExecutorService dbExecutor; // Pass this from the Activity
+    ArrayList<PDFMap> pdfMaps;
     Double latNow, longNow;
     //private final DBHandler db;
 
@@ -101,33 +104,36 @@ public class CustomAdapter extends BaseAdapter {
     public ArrayList<String> getAllMapNames() throws SQLException {
         // 4-16-26 for removing waypts that no longer have an existing map. Old bug.
         ArrayList<String> list = new ArrayList<>();
-        for (int i=0; i<this.pdfMaps.size(); i++){
+        for (int i = 0; i < this.pdfMaps.size(); i++) {
             if (!list.contains(this.pdfMaps.get(i).getName()))
                 list.add(this.pdfMaps.get(i).getName());
         }
         return list;
     }
 
-    public void removeWayPtsForOldMaps() throws SQLException {
+    public void removeWayPtsForOldMaps() {
         // 4-16-26 Make sure all waypoints have map files that exist. Old bug left waypoints when map was deleted!
-
         dbExecutor.execute(() -> {
-            DBHandler db = DBHandler.getInstance(context);
-            ArrayList <String> wayPtMapNames = db.getAllMapNames();
-            ArrayList <String> existingMapNames = getAllMapNames();
-            for (int i = 0; i < wayPtMapNames.size(); i++) {
-                if (!existingMapNames.contains(wayPtMapNames.get(i))){
-                    // map no longer exists. Remove waypoints for this map
-                    db.deleteWayPts(wayPtMapNames.get(i));
+            try {
+                DBHandler db = DBHandler.getInstance(context);
+                ArrayList<String> wayPtMapNames = db.getAllMapNames();
+                ArrayList<String> existingMapNames = getAllMapNames();
+                for (int i = 0; i < wayPtMapNames.size(); i++) {
+                    if (!existingMapNames.contains(wayPtMapNames.get(i))) {
+                        // map no longer exists. Remove waypoints for this map
+                        db.deleteWayPts(wayPtMapNames.get(i));
+                    }
                 }
+            } catch (SQLException e) {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(context, "Database error: "+e.getMessage(),Toast.LENGTH_LONG).show();
+                });
             }
         });
     }
     public void checkIfExists() {
-        // Check if the pdf exists in App directory. If not remove it from the database. Called by MainActivity.
+        // Check if the PDF exists in App directory. If not remove it from the database. Called by MainActivity.
         try {
-            //DBHandler db = new DBHandler(c);
-            //DBWayPtHandler wpdb = new DBWayPtHandler(c);
             for (int i = 0; i < pdfMaps.size(); i++) {
                 PDFMap map = pdfMaps.get(i);
                 File file = new File(map.getPath());

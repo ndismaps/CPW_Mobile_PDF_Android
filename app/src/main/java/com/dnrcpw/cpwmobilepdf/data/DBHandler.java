@@ -26,7 +26,7 @@ import java.util.Locale;
 
 public class DBHandler extends SQLiteOpenHelper {
     private static DBHandler sInstance; // used by every activity. Application context.
-    private static final int DATABASE_VERSION = 3;
+    private static final int DATABASE_VERSION = 4;
     private static final String DATABASE_NAME = "mapsInfo";
     // Maps table name
     private static final String TABLE_MAPS = "maps";
@@ -124,16 +124,29 @@ public class DBHandler extends SQLiteOpenHelper {
                      // version 3 new stuff
                      db1.execSQL("ALTER TABLE " + TABLE_SETTINGS + " ADD COLUMN " + KEY_SHOW_TRACKS + " TEXT");
                      db1.execSQL("UPDATE " + TABLE_SETTINGS + " SET " + KEY_SHOW_TRACKS + " = '0'");
+                     // Version 4 new stuff
+                     // Create Tables if they don't exist
+                     createWayPtTable(db1);
+                     createTracksTable(db1);
+                     // Migrate data from the other two standalone files into this open 'db1' instance
+                     migrateExternalDatabase(context, db1, "wayPtsInfo.db", "wayPts");
+                     migrateExternalDatabase(context, db1, "tracksInfo.db", "tracks");
                  case 2:
                      // Version 3 new stuff
                      db1.execSQL("ALTER TABLE " + TABLE_SETTINGS + " ADD COLUMN " + KEY_SHOW_TRACKS + " TEXT");
                      db1.execSQL("UPDATE " + TABLE_SETTINGS + " SET " + KEY_SHOW_TRACKS + " = '0'");
+                     // Version 4 new stuff
+                     // Create Tables if they don't exist
+                     createWayPtTable(db1);
+                     createTracksTable(db1);
+                     // Migrate data from the other two standalone files into this open 'db1' instance
+                     migrateExternalDatabase(context, db1, "wayPtsInfo.db", "wayPts");
+                     migrateExternalDatabase(context, db1, "tracksInfo.db", "tracks");
                  case 3:
                      // Version 4 new stuff
                      // Create Tables if they don't exist
                      createWayPtTable(db1);
                      createTracksTable(db1);
-
                      // Migrate data from the other two standalone files into this open 'db1' instance
                      migrateExternalDatabase(context, db1, "wayPtsInfo.db", "wayPts");
                      migrateExternalDatabase(context, db1, "tracksInfo.db", "tracks");
@@ -595,7 +608,6 @@ public class DBHandler extends SQLiteOpenHelper {
                     deleteIds.add(cursor.getInt(0));
                     // Adding track to list if matches name
                 else if (mapName.equals(cursor.getString(1))) {
-
                     trackList.add(Integer.parseInt(cursor.getString(0)), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4), cursor.getString(5));
                 }
             } while (cursor.moveToNext());
@@ -677,23 +689,28 @@ public class DBHandler extends SQLiteOpenHelper {
     // Get All MapNames
     public ArrayList<String> getAllMapNames() throws SQLException {
         // 4-16-26 for removing waypts that no longer have an existing map. Old bug.
-        SQLiteDatabase db = this.getWritableDatabase();
-        ArrayList<String> list = new ArrayList<>();
-        // Select All Query
-        String selectQuery = "SELECT * FROM " + TABLE_WAYPTS;
-        Cursor cursor = db.rawQuery(selectQuery, null);
+        try {
+            SQLiteDatabase db = this.getWritableDatabase();
 
-        // looping through all rows and adding to list
-        if (cursor.moveToFirst()) {
-            do {
-                // Add mapName to list
-                if (!list.contains(cursor.getString(1)))
-                    list.add(cursor.getString(1));
-            } while (cursor.moveToNext());
+            ArrayList<String> list = new ArrayList<>();
+            // Select All Query
+            String selectQuery = "SELECT * FROM " + TABLE_WAYPTS;
+            Cursor cursor = db.rawQuery(selectQuery, null);
+
+            // looping through all rows and adding to list
+            if (cursor.moveToFirst()) {
+                do {
+                    // Add mapName to list
+                    if (!list.contains(cursor.getString(1)))
+                        list.add(cursor.getString(1));
+                } while (cursor.moveToNext());
+            }
+            cursor.close();
+            // return map names list
+            return list;
+        }catch(SQLException e){
+            throw new SQLException(e.getMessage());
         }
-        cursor.close();
-        // return map names list
-        return list;
     }
 
     // Getting All Waypoints from one PDF map

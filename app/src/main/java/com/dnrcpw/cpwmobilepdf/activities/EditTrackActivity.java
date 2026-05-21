@@ -4,6 +4,8 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.SQLException;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.EditText;
@@ -19,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
+import com.dnrcpw.cpwmobilepdf.data.ToastUtils;
 import com.dnrcpw.cpwmobilepdf.model.Track;
 import com.dnrcpw.cpwmobilepdf.model.Tracks;
 
@@ -72,19 +75,22 @@ public class EditTrackActivity extends AppCompatActivity{
             try {
                 tracks = db.getTracks(mapName);
             } catch (SQLException exc) {
-                Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database. " + exc.getMessage(), Toast.LENGTH_LONG).show();
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    ToastUtils.showExtendedToast(EditTrackActivity.this, "Failed to read tracks from database. " + exc.getMessage());
+                });
 
             } catch (Exception exc) {
-                Toast.makeText(EditTrackActivity.this, "Failed to read tracks from database, other exception. " + exc.getMessage(), Toast.LENGTH_LONG).show();
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    ToastUtils.showExtendedToast(EditTrackActivity.this, "Failed to read tracks from database, other exception. " + exc.getMessage());
+                });
 
             }
             // Switch to main thread to push the data to your UI
             runOnUiThread(() -> {
-
                 try {
                     track = tracks.get(id);
                 } catch (Exception e) {
-                    Toast.makeText(EditTrackActivity.this, "That track was not found in the database. Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    ToastUtils.showExtendedToast(EditTrackActivity.this, "That track was not found in the database. Error: " + e.getMessage());
                     return;
                 }
 
