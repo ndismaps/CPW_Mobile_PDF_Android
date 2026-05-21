@@ -19,10 +19,10 @@ public class Tracks {
         return obj;
     }
 
-    public void add(int id, String name, String desc, String colorName, String time, String trackSegment){
+    public void add(int id, String name, String desc, String trackSegment, String colorName, String time){
         // Add a track to tracks array.
-        // Called in DBTrackHandler getTracks
-        Track obj = new Track(id, name, desc, colorName, time, trackSegment);
+        // Called in DBHandler getTracks
+        Track obj = new Track(id, name, desc, trackSegment, colorName, time);
         // Make sure this track has segments
         if (obj.getTrackSegments() != null)
             tracks.add(obj);

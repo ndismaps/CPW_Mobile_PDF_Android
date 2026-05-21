@@ -111,6 +111,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     double longNow;
     double latBefore;
     double longBefore;
+    double altitudeNow;
+    double altitudeBefore;
     float accuracy;
     float bearing;
 
@@ -254,6 +256,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         latNow = -1;
         latBefore = -1;
         longBefore = -1;
+        altitudeNow = -1.0;
+        altitudeBefore = -1.0;
         addWayPtFlag=false;
         addTrackFlag=false;
         menuBtn = findViewById(R.id.load_adjacent_maps); // adjacent map button
@@ -831,10 +835,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                     db.addWayPt(wayPt);
                                     wayPts = db.getWayPts(mapName);
                                 } catch (SQLException exc) {
-                                    // wayPts.remove((float)longitude,(float)latitude);
-                                    new Handler(Looper.getMainLooper()).post(() -> {
-                                        ToastUtils.showExtendedToast(PDFActivity.this, "Failed to save waypoint. " + exc.getMessage());
-                                    });
+                                    ToastUtils.showExtendedToast(PDFActivity.this, "Failed to save waypoint. " + exc.getMessage());
                                     clickedWP = -1;
                                     newWP = false;
                                     addWayPtFlag = false;
@@ -1046,9 +1047,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                             try {
                                 db.addWayPt(wayPt);
                             } catch (SQLException exc) {
-                                new Handler(Looper.getMainLooper()).post(() -> {
-                                    ToastUtils.showExtendedToast(PDFActivity.this, "Failed to add waypoint to database.");
-                                });
+                                ToastUtils.showExtendedToast(PDFActivity.this, "Failed to add waypoint to database.");
                             }
                         });
                         for (int i1 = 0; i1 < wayPts.size(); i1++) {
@@ -1791,9 +1790,11 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 // save last location so we can see how much they moved
                 latBefore = latNow;
                 longBefore = longNow;
+                altitudeBefore = altitudeNow;
 
                 latNow = intent.getDoubleExtra("extra_latitude", 0.0);
                 longNow = intent.getDoubleExtra("extra_longitude", 0.0);
+                altitudeNow = intent.getDoubleExtra("extra_altitude", 0.0);
                 accuracy = intent.getFloatExtra("extra_accuracy", 0.0f);
 
                 // **Debug** make it simulate user movement to draw a track
@@ -1821,7 +1822,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         (longNow >= long1 && longNow <= long2)) {
                     //Track currentTrack = new Track();
                     Track currentTrack = tracks.get(currentTrackID);
-                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
+                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) altitudeBefore, (float) longNow, (float) latNow, (float) altitudeNow);
                     // Save new line segment in database
                     dbExecutor.execute(() -> {
                         DBHandler db = DBHandler.getInstance(PDFActivity.this);

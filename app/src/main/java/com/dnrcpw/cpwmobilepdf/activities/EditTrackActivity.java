@@ -2,10 +2,7 @@ package com.dnrcpw.cpwmobilepdf.activities;
 
 import android.content.DialogInterface;
 import android.content.Intent;
-import android.database.SQLException;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.EditText;
@@ -25,8 +22,10 @@ import com.dnrcpw.cpwmobilepdf.data.ToastUtils;
 import com.dnrcpw.cpwmobilepdf.model.Track;
 import com.dnrcpw.cpwmobilepdf.model.Tracks;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class EditTrackActivity extends AppCompatActivity{
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // for database calls
@@ -56,7 +55,7 @@ public class EditTrackActivity extends AppCompatActivity{
             finish();
             return;
         }
-
+        setContentView(R.layout.activity_track);
         id = i.getExtras().getInt("CLICKED");
         mapName = i.getExtras().getString("NAME");
         path = i.getExtras().getString("PATH");
@@ -64,48 +63,69 @@ public class EditTrackActivity extends AppCompatActivity{
         //String mediaBox = i.getExtras().getString("MEDIABOX");
         viewPort = i.getExtras().getString("VIEWPORT");
         //landscape = i.getExtras().getBoolean("LANDSCAPE");
+        editTxt = findViewById(R.id.trackName);
+        trackImg = findViewById(R.id.track_img);
+        timeStamp = findViewById(R.id.trackTime);
+        trackColorGrp = findViewById(R.id.trackColor);
+        cyanBtn = findViewById(R.id.cyanTrack);
+        redBtn = findViewById(R.id.redTrack);
+        blueBtn = findViewById(R.id.blueTrack);
+        ImageButton clearBtn = findViewById(R.id.clear_track);
+        // Clear track name
+        clearBtn.setOnClickListener(view -> editTxt.setText(""));
+        // Listeners for track color radio buttons
+        trackColorGrp.setOnCheckedChangeListener((radioGroup, checkedId) -> {
+            if (checkedId == R.id.cyanTrack) {
+                track.setColorName("cyan");
+                trackImg.setImageResource(R.drawable.ic_cyan_track);
+                changed = true;
+            } else if (checkedId == R.id.redTrack) {
+                track.setColorName("red");
+                trackImg.setImageResource(R.drawable.ic_red_track);
+                changed = true;
+            } else if (checkedId == R.id.blueTrack) {
+                track.setColorName("blue");
+                trackImg.setImageResource(R.drawable.ic_blue_track);
+                changed = true;
+            }
+        });
 
         // if the map was locked in landscape, show this also in landscape
         /*if (landscape){
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
         }*/
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicBoolean isSuccess = new AtomicBoolean(false);
         dbExecutor.execute(() -> {
             DBHandler db = DBHandler.getInstance(EditTrackActivity.this);
             try {
                 tracks = db.getTracks(mapName);
-            } catch (SQLException exc) {
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    ToastUtils.showExtendedToast(EditTrackActivity.this, "Failed to read tracks from database. " + exc.getMessage());
-                });
-
+                isSuccess.set(true);
             } catch (Exception exc) {
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    ToastUtils.showExtendedToast(EditTrackActivity.this, "Failed to read tracks from database, other exception. " + exc.getMessage());
-                });
-
+                isSuccess.set(false);
+                ToastUtils.showExtendedToast(EditTrackActivity.this, "Failed to read tracks from database. " + exc.getMessage());
+            } finally {
+                latch.countDown();
             }
             // Switch to main thread to push the data to your UI
             runOnUiThread(() -> {
+                if (!isSuccess.get()) {finish();return;}
                 try {
                     track = tracks.get(id);
+                    isSuccess.set(true);
                 } catch (Exception e) {
                     ToastUtils.showExtendedToast(EditTrackActivity.this, "That track was not found in the database. Error: " + e.getMessage());
-                    return;
+                    isSuccess.set(false);
+                }  finally {
+                    latch.countDown();
                 }
+                if (!isSuccess.get()) {finish();return;}
 
-                setContentView(R.layout.activity_track);
                 prevName = track.getDesc();
-                editTxt = findViewById(R.id.trackName);
-                editTxt.setText(track.getDesc());
-                trackImg = findViewById(R.id.track_img);
-                timeStamp = findViewById(R.id.trackTime);
+                editTxt.setText(prevName);
                 timeStamp.setText(track.getTime());
-                trackColorGrp = findViewById(R.id.trackColor);
                 String trackColor = track.getColorName();
-                cyanBtn = findViewById(R.id.cyanTrack);
-                redBtn = findViewById(R.id.redTrack);
-                blueBtn = findViewById(R.id.blueTrack);
                 if (trackColor.equals("cyan")) {
                     cyanBtn.setChecked(true);
                     trackImg.setImageResource(R.drawable.ic_cyan_track);
@@ -116,27 +136,6 @@ public class EditTrackActivity extends AppCompatActivity{
                     blueBtn.setChecked(true);
                     trackImg.setImageResource(R.drawable.ic_blue_track);
                 }
-                ImageButton clearBtn = findViewById(R.id.clear_track);
-
-                // Clear track name
-                clearBtn.setOnClickListener(view -> editTxt.setText(""));
-
-                // Listeners for track color radio buttons
-                trackColorGrp.setOnCheckedChangeListener((radioGroup, checkedId) -> {
-                    if (checkedId == R.id.cyanTrack) {
-                        track.setColorName("cyan");
-                        trackImg.setImageResource(R.drawable.ic_cyan_track);
-                        changed = true;
-                    } else if (checkedId == R.id.redTrack) {
-                        track.setColorName("red");
-                        trackImg.setImageResource(R.drawable.ic_red_track);
-                        changed = true;
-                    } else if (checkedId == R.id.blueTrack) {
-                        track.setColorName("blue");
-                        trackImg.setImageResource(R.drawable.ic_blue_track);
-                        changed = true;
-                    }
-                });
             });
         });
     }
