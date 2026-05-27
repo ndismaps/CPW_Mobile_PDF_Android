@@ -18,14 +18,12 @@ import android.widget.Toast;
 
 import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
-import com.dnrcpw.cpwmobilepdf.data.DBWayPtHandler;
 import com.dnrcpw.cpwmobilepdf.model.PDFMap;
 import com.dnrcpw.cpwmobilepdf.model.Tracks;
 import com.dnrcpw.cpwmobilepdf.model.WayPts;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.concurrent.atomic.AtomicReference; // to trap SQLException in dbExecutor.execute
 import java.util.Collections;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;

@@ -4,6 +4,7 @@ import static android.graphics.Color.argb;
 import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -23,11 +24,14 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.location.Location;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.text.TextPaint;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -56,11 +60,11 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.widget.PopupMenu;
+import androidx.core.content.FileProvider;
 import androidx.core.content.res.ResourcesCompat;
 
 import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
-import com.dnrcpw.cpwmobilepdf.data.DBWayPtHandler;
 import com.dnrcpw.cpwmobilepdf.data.ToastUtils;
 import com.dnrcpw.cpwmobilepdf.model.PDFMap;
 import com.dnrcpw.cpwmobilepdf.model.WayPt;
@@ -71,19 +75,26 @@ import com.dnrcpw.cpwmobilepdf.model.Tracks;
 import com.github.barteksc.pdfviewer.PDFView;
 
 import java.io.File;
+import java.io.OutputStream;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Random;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /* show the map */
 public class PDFActivity extends AppCompatActivity implements SensorEventListener {
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // for database calls
-    //boolean debug = true;
+    boolean debug = false;
     PDFView pdfView;
     ArrayList<PDFMap> maps;
     PDFMap myMap;
@@ -111,8 +122,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     double longNow;
     double latBefore;
     double longBefore;
-    double altitudeNow;
-    double altitudeBefore;
     float accuracy;
     float bearing;
 
@@ -250,14 +259,20 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         // final RelativeLayout wait; // indeterminate progress bar
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_pdf);
+        // SET UP LOCATION SERVICES
+        try {
+            locationReceiver = new PDFActivity.LocationUpdateReceiver(); // new TrackingService
+        } catch (Exception e){
+            // no gps service
+            ToastUtils.showExtendedToast(PDFActivity.this,"No GPS Service, cannot show you location.");
+            return;
+        }
         distanceTextView = findViewById(R.id.distance_text_view); // display distance traveled on current track
         wait = findViewById(R.id.loadingPanel);
         wait.setVisibility(View.VISIBLE);
         latNow = -1;
         latBefore = -1;
         longBefore = -1;
-        altitudeNow = -1.0;
-        altitudeBefore = -1.0;
         addWayPtFlag=false;
         addTrackFlag=false;
         menuBtn = findViewById(R.id.load_adjacent_maps); // adjacent map button
@@ -400,15 +415,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         //PDFVIEW WILL DISPLAY OUR PDFS
         pdfView = findViewById(R.id.pdfView);
         pdfView.enableAntialiasing(true); // improve rendering a little bit on low-res screens
-
-        // SET UP LOCATION SERVICES
-        try {
-            locationReceiver = new PDFActivity.LocationUpdateReceiver(); // new TrackingService
-        } catch (Exception e){
-            // no gps service
-            ToastUtils.showExtendedToast(PDFActivity.this,"No GPS Service, cannot show you location.");
-            return;
-        }
 
         setupColorsMoveIcon();
         setupPDFView();
@@ -1790,15 +1796,13 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 // save last location so we can see how much they moved
                 latBefore = latNow;
                 longBefore = longNow;
-                altitudeBefore = altitudeNow;
 
                 latNow = intent.getDoubleExtra("extra_latitude", 0.0);
                 longNow = intent.getDoubleExtra("extra_longitude", 0.0);
-                altitudeNow = intent.getDoubleExtra("extra_altitude", 0.0);
                 accuracy = intent.getFloatExtra("extra_accuracy", 0.0f);
 
                 // **Debug** make it simulate user movement to draw a track
-                if (latBefore != -1){
+                if (debug && latBefore != -1){
                     Random rand = new Random();
                     int randomInt = 1;
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
@@ -1822,7 +1826,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         (longNow >= long1 && longNow <= long2)) {
                     //Track currentTrack = new Track();
                     Track currentTrack = tracks.get(currentTrackID);
-                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) altitudeBefore, (float) longNow, (float) latNow, (float) altitudeNow);
+                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
                     // Save new line segment in database
                     dbExecutor.execute(() -> {
                         DBHandler db = DBHandler.getInstance(PDFActivity.this);
@@ -1953,46 +1957,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             }
         }
     }
-
-    // TODO remove
-    /*private void startLocationUpdates() {
-        LocationRequest mLocationRequest;
-        if (Build.VERSION.SDK_INT >= 31){
-            mLocationRequest = new LocationRequest.Builder(1000)
-                    .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-                    .setIntervalMillis(1000)
-                    .setWaitForAccurateLocation(false)
-                    .setMinUpdateIntervalMillis(1000)
-                    .setMaxUpdateDelayMillis(1000)
-                    .build();
-        }
-        // API <= 30
-        else{
-            mLocationRequest = new LocationRequest();
-            if (mLocationRequest != null) {
-                mLocationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-                mLocationRequest.setInterval(1000); //update location every 1 seconds
-            }
-        }
-
-        if ((ContextCompat.checkSelfPermission(PDFActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) &&
-                (ContextCompat.checkSelfPermission(PDFActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
-            if (mFusedLocationClient != null) {
-                mFusedLocationClient.requestLocationUpdates(mLocationRequest, mLocationCallback, Looper.getMainLooper());
-            }
-        }
-    }*/
-
-    // TODO remove
-    /*private void stopLocationUpdates() {
-        if ((ContextCompat.checkSelfPermission(PDFActivity.this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) &&
-                (ContextCompat.checkSelfPermission(PDFActivity.this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED)) {
-            if (mFusedLocationClient != null) {
-                mFusedLocationClient.removeLocationUpdates(mLocationCallback);
-            }
-        }
-    }*/
-
 
     // -------------------------------------------------
     //    Screen Orientation or Screen Rotate Event
@@ -2238,11 +2202,32 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 // display alert dialog
                 AlertDialog.Builder builder = new AlertDialog.Builder(PDFActivity.this);
                 builder.setTitle("Delete");
-                builder.setMessage("Delete all waypoints?").setPositiveButton("DELETE", dialogAllClickListener)
+                builder.setMessage("Delete all waypoints in this map?").setPositiveButton("DELETE", dialogAllClickListener)
                         .setNegativeButton("CANCEL", dialogAllClickListener).show();
             }catch (SQLException e){
-                Toast.makeText(PDFActivity.this,"Problem deleting "+mapName, Toast.LENGTH_LONG).show();
+                Toast.makeText(PDFActivity.this,"Problem deleting waypoints in "+mapName, Toast.LENGTH_LONG).show();
             }
+        }
+        // Delete all tracks in this map
+        else if (id == R.id.action_deleteAllTracks){
+            try {
+                deleting = true; // don't register click events until done deleting
+                // display alert dialog
+                AlertDialog.Builder builder = new AlertDialog.Builder(PDFActivity.this);
+                builder.setTitle("Delete");
+                builder.setMessage("Delete all tracks in this map?").setPositiveButton("DELETE", dialogAllTracksClickListener)
+                        .setNegativeButton("CANCEL", dialogAllTracksClickListener).show();
+            }catch (SQLException e){
+                Toast.makeText(PDFActivity.this,"Problem deleting tracks in "+mapName, Toast.LENGTH_LONG).show();
+            }
+        }
+        // Download KMZ file of all tracks in this map
+        else if (id == R.id.action_downloadKMZTracks){
+            // Generate: kml string
+            String kmlContent = generateStyledTrackKml();
+
+            // Export out to downloads folder
+            exportKmzToDownloads(PDFActivity.this, mapName, kmlContent);
         }
         // All Waypoint Labels
         else if (id == R.id.action_showAll){
@@ -2552,6 +2537,171 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         return super.onOptionsItemSelected(item);
     }
 
+    // Write waypoints and tracks to KML format
+    private String generateStyledTrackKml() {
+        StringBuilder kml = new StringBuilder();
+        kml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        kml.append("<kml xmlns=\"http://www.opengis.net/kml/2.2\"\n");
+        // Crucial: define the Google extension namespace (gx) for tracks
+        kml.append("     xmlns:gx=\"http://www.google.com/kml/ext/2.2\">\n");
+        kml.append("  <Document>\n");
+        kml.append("    <name>"+mapName+"</name>\n");
+
+        // Define Style (Format: AABBGGRR - Alpha, Blue, Green, Red)
+        kml.append("    <Style id=\"cyan\">\n");
+        kml.append("      <LineStyle>\n");
+        kml.append("        <color>FFFFFF00</color>\n");
+        kml.append("        <width>3</width>\n");
+        kml.append("      </LineStyle>\n");
+        kml.append("    </Style>\n");
+
+        // Define Style (Format: AABBGGRR - Alpha, Blue, Green, Red)
+        kml.append("    <Style id=\"blue\">\n");
+        kml.append("      <LineStyle>\n");
+        kml.append("        <color>FFFF0000</color>\n");
+        kml.append("        <width>3</width>\n");
+        kml.append("      </LineStyle>\n");
+        kml.append("    </Style>\n");
+
+        // Define Style (Format: AABBGGRR - Alpha, Blue, Green, Red)
+        kml.append("    <Style id=\"red\">\n");
+        kml.append("      <LineStyle>\n");
+        kml.append("        <color>FF0000FF</color>\n");
+        kml.append("        <width>3</width>\n");
+        kml.append("      </LineStyle>\n");
+        kml.append("    </Style>\n");
+
+        // 2. Add Track Placemark
+        if (tracks != null && tracks.size() > 0) {
+            for (var i=0; i<tracks.size(); i++) {
+                kml.append("    <Placemark>\n");
+                kml.append("      <name>Styled Activity Route</name>\n");
+                kml.append("      <styleUrl>#").append(tracks.get(i).getColorName()).append("</styleUrl>\n"); // Link to style id above
+                kml.append("      <gx:Track>\n");
+                kml.append("        <altitudeMode>clampToGround</altitudeMode>\n");
+
+                // Bind a single timestamp to the entire Placemark feature
+                String timestamp = convertStringToKmlTimestamp(tracks.get(i).getTime(),"yyyy-MM-dd HH:mm:ss");
+                kml.append("      <TimeStamp>\n");
+                kml.append("        <when>").append(timestamp).append("</when>\n");
+                kml.append("      </TimeStamp>\n");
+
+                // Loop 2: Output matching space-separated coordinates (lon lat alt)
+                for (var j=0; j<tracks.get(i).getTrackSegments().size(); j++) {
+                    // trackSegments = x1,y1,x2,y2
+                    TrackSegment segment = tracks.get(i).getTrackSegments().get(j);
+                    // hardcode altitude as 0 for 2D maps
+                    if (j == 0) {
+                        kml.append("        <gx:coord>")
+                                .append(segment.getX1()).append(" ")
+                                .append(segment.getY1()).append(" ")
+                                .append(0)
+                                .append("</gx:coord>\n");
+                    }else {
+                        kml.append("        <gx:coord>")
+                                .append(segment.getX2()).append(" ")
+                                .append(segment.getY2()).append(" ")
+                                .append(0)
+                                .append("</gx:coord>\n");
+                    }
+                }
+            }
+
+            kml.append("      </gx:Track>\n");
+            kml.append("    </Placemark>\n");
+        }
+
+        // 2. Generate separate, individual Point Placemarks (Optional)
+        /*if (individualPlacemarks != null) {
+            int index = 1;
+            for (GeoPoint point : individualPlacemarks) {
+                kml.append("    <Placemark>\n");
+                kml.append("      <name>Waypoint ").append(index++).append("</name>\n");
+                kml.append("      <Point>\n");
+                kml.append("        <coordinates>")
+                        .append(point.longitude).append(",")
+                        .append(point.latitude).append(",")
+                        .append(point.altitude)
+                        .append("</coordinates>\n");
+                kml.append("      </Point>\n");
+                kml.append("    </Placemark>\n");
+            }
+        }*/
+
+        kml.append("  </Document>\n");
+        kml.append("</kml>");
+
+        return kml.toString();
+    }
+    // convert date string to format required by Google KML file
+    public static String convertStringToKmlTimestamp(String incomingDateStr, String inputPattern) {
+        if (incomingDateStr == null || incomingDateStr.trim().isEmpty()) return "";
+
+        try {
+            // 1. Create a parser matching your raw data format (e.g., local time setup)
+            SimpleDateFormat inputFormat = new SimpleDateFormat(inputPattern, Locale.US);
+            // If your string source is already in UTC, uncomment the line below:
+            // inputFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+            Date parsedDate = inputFormat.parse(incomingDateStr);
+
+            // 2. Format out to clean ISO 8601 KML structure
+            SimpleDateFormat kmlFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+            kmlFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+            return kmlFormat.format(parsedDate);
+
+        } catch (ParseException e) {
+            e.printStackTrace();
+            return ""; // Return empty or handle error fallback gracefully
+        }
+    }
+    public void exportKmzToDownloads(Context context, String fileName, String kmlContent) {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName + ".kmz");
+        values.put(MediaStore.MediaColumns.MIME_TYPE, "application/vnd.google-earth.kmz");
+
+        // Set path for Android 10+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        }
+
+        Uri uri = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        }else{
+            // Accessing the Downloads folder in API 23-28
+            // Get the file path
+            File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+            File myFile = new File(downloadsDir, "doc.kml");
+
+            // Convert File to Uri
+            //Context context = getApplicationContext();
+            String authority = context.getPackageName() + ".fileprovider";
+            uri = FileProvider.getUriForFile(context, authority, myFile);
+        }
+
+        if (uri != null) {
+            try (OutputStream outputStream = context.getContentResolver().openOutputStream(uri);
+                 ZipOutputStream zos = new ZipOutputStream(outputStream)) {
+
+                // KMZ requires the main KML file to be named "doc.kml"
+                ZipEntry entry = new ZipEntry("doc.kml");
+                zos.putNextEntry(entry);
+                zos.write(kmlContent.getBytes());
+                zos.closeEntry();
+
+                ToastUtils.showExtendedToast(PDFActivity.this,"KMZ file saved to downloads folder.");
+
+                // File is automatically saved when streams close
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+
+
     private void showTrackingConfigurationPanel() {
         // Inflate the layout manually
         LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
@@ -2768,12 +2918,36 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         public void onClick(DialogInterface dialog, int which) {
             switch (which){
                 case DialogInterface.BUTTON_POSITIVE:
-                    //'DELETE' button clicked, remove map from imported maps
+                    //'DELETE' button clicked, remove waypoints from map
                     dbExecutor.execute(() -> {
                         DBHandler.getInstance(PDFActivity.this).deleteWayPts(mapName);
                     });
                     wayPts.removeAll();
                     deleting = false;
+                    pdfView.invalidate();
+                    break;
+
+                case DialogInterface.BUTTON_NEGATIVE:
+                    //'CANCEL' button clicked, do nothing
+                    deleting = false;
+                    break;
+            }
+        }
+    };
+
+    // Delete All Tracks
+    DialogInterface.OnClickListener dialogAllTracksClickListener = new DialogInterface.OnClickListener() {
+        @Override
+        public void onClick(DialogInterface dialog, int which) {
+            switch (which){
+                case DialogInterface.BUTTON_POSITIVE:
+                    //'DELETE' button clicked, remove tracks from map
+                    dbExecutor.execute(() -> {
+                        DBHandler.getInstance(PDFActivity.this).deleteTracks(mapName);
+                    });
+                    tracks.removeAll();
+                    deleting = false;
+                    turnTrackingOff();
                     pdfView.invalidate();
                     break;
 

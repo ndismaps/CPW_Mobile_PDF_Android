@@ -26,7 +26,7 @@ public class TrackingService extends Service {
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
     // Global tracker configuration (Default values)
-    private long currentIntervalMillis = 2000; // 2 seconds default for testing     10000; // 10 seconds default
+    private long currentIntervalMillis = 10000; // 2 seconds default for testing     10000; // 10 seconds default
     private long currentFastestIntervalMillis = 5000; // 5 seconds default
     private boolean isAutoAdjustEnabled = true; // Toggle for speed-based adjustment
     private float lastSpeedMps = 0.0f;

@@ -552,7 +552,7 @@ public class DBHandler extends SQLiteOpenHelper {
         ContentValues values = new ContentValues();
         values.put(KEY_MAPNAME, track.getMapName()); // Name of map
         values.put(KEY_DESC, track.getDesc()); // Track description
-        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,altitude1,x2,y2,altitude2,x3,y3,altitude3,... line segments in lat, long
+        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
         // Inserting Row
@@ -564,7 +564,7 @@ public class DBHandler extends SQLiteOpenHelper {
         ContentValues values = new ContentValues();
         values.put(KEY_MAPNAME, track.getMapName()); // Name of map
         values.put(KEY_DESC, track.getDesc()); // Track description
-        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,altitude1,x2,y2,altitude2,x3,y3,altitude3,... line segments in lat, long
+        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
         // updating row

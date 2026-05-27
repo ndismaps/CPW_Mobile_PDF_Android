@@ -15,6 +15,8 @@
     <string name="showTracks">Show tracks</string>
     <string name="loadAdjacentMaps">Load adjacent maps</string>
     <string name="deleteAllWayPts">Delete all waypoints</string>
+    <string name="deleteAllTracks">Delete all tracks</string>
+    <string name="downloadKMZTracks">Download a KMZ file of tracks</string>
     <string name="wayPtInstr">Tap map to add waypoint</string>
     <string name="trackingOn">Tracking is on</string>
     <string name="trackingOff">Tracking is off</string>

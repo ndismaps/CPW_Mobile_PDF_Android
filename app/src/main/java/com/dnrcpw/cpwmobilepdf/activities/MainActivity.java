@@ -148,7 +148,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 checkAndRequestTracking();
             }
 
-                        // Check if GPS is enabled
+            // Check if GPS is enabled
             if (!isGPSEnabled(MainActivity.this)) {
                 Toast.makeText(MainActivity.this, "GPS is not enabled.", Toast.LENGTH_LONG).show();
             }
@@ -973,8 +973,9 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             toolbar = findViewById(R.id.toolbar);
         }
         MenuItem delMapsMenuItem = toolbar.getMenu().findItem(R.id.action_deleteAll);
-        if (delMapsMenuItem != null)
-            delMapsMenuItem.setVisible(myAdapter.pdfMaps.size() != 0);// setEnabled(myAdapter.pdfMaps.size() != 0);
+        if (delMapsMenuItem != null && myAdapter != null && myAdapter.pdfMaps != null) {
+            delMapsMenuItem.setVisible(myAdapter.pdfMaps.size() != 0);
+        }
         return true;
     }
 

@@ -34,6 +34,23 @@
       android:title="@string/deleteAllWayPts"
       android:visible="true"
       app:showAsAction="never" />
+  <item
+      android:id="@+id/action_tracking_settings"
+      android:title="Tracking Configuration"
+      android:icon="@android:drawable/ic_menu_preferences"
+      app:showAsAction="never"
+      app:iconTint="@android:color/black"
+      app:actionLayout="@layout/menu_tracking_config" />
+    <item
+        android:id="@+id/action_deleteAllTracks"
+        android:title="@string/deleteAllTracks"
+        android:visible="true"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_downloadKMZTracks"
+        android:title="@string/downloadKMZTracks"
+        android:visible="true"
+        app:showAsAction="never" />
   <item android:title="@string/app_settings"/>
       <item
           android:id="@+id/action_showWayPts"
@@ -57,13 +74,6 @@
         android:icon="@drawable/ic_gray_track"
         android:title="@string/showTracks"
         app:showAsAction="never" />
-    <item
-        android:id="@+id/action_tracking_settings"
-        android:title="Tracking Configuration"
-        android:icon="@android:drawable/ic_menu_preferences"
-        app:showAsAction="never"
-        app:iconTint="@android:color/black"
-        app:actionLayout="@layout/menu_tracking_config" />
       <item
           android:id="@+id/action_loadAdjacentMaps"
           android:title="@string/loadAdjacentMaps"
