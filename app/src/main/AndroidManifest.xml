@@ -12,6 +12,10 @@
     <!-- For Android 10+ if you plan to access location without a visible notification-->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
+    <!-- for tracking, don't allow the phone to sleep and not receive location updates -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+
     <!-- add usesCleartextTraffic to prevent error when downloading over http like fstopo uses     android:usesCleartextTraffic="true" -->
     <!-- use adjustPan to scroll list up when keyboard displays -->
 
@@ -25,7 +29,6 @@
         android:theme="@style/AppTheme"
         android:windowSoftInputMode="adjustPan">
 
-        <!-- TODO move location service from MainActivity to LocationService new class -->
         <!-- Recommended for Android 9 (API level 28) and lower. -->
         <!-- Required for Android 10 (API level 29) and higher. -->
         <!--service
@@ -36,7 +39,6 @@
         <activity
             android:name="com.dnrcpw.cpwmobilepdf.activities.MainActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
-            android:label="@string/app_name"
             android:theme="@style/AppTheme.NoActionBar"
             android:exported="true">
             <intent-filter>

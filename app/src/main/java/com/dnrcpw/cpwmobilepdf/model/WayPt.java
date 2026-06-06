@@ -9,15 +9,15 @@ import java.util.Locale;
 public class WayPt {
     // Holds one waypoint
     private int id;
-    private String name = ""; // pdf map name
-    private String desc = ""; // description
-    private float x = 0; // x screen coordinate
-    private float y = 0; // y screen coordinate
-    private String time; // date and time waypoint was created
+    private String name; // pdf map name
+    private String desc; // description
+    private float x; // x screen coordinate
+    private float y; // y screen coordinate
+    private final String time; // date and time waypoint was created
     private String location; // lat, long
     private String colorName; //  color of pushpin image
 
-    public WayPt(){}
+    /*public WayPt(){}*/
 
     public WayPt(String name, String desc, float x, float y, String colorName, String location){
         this.name = name;
@@ -70,6 +70,14 @@ public class WayPt {
     public String getLocation() {
         return location;
     }
+    public String getLat() {
+        int pos = location.indexOf(",");
+        return location.substring(0,pos);
+    }
+    public String getLong(){
+        int pos = location.indexOf(",");
+        return location.substring(pos+1);
+    }
 
     public String getTime() {
         return time;
@@ -103,9 +111,9 @@ public class WayPt {
         this.location = location;
     }
 
-    public void setTime(String time) {
+    /*public void setTime(String time) {
         this.time = time;
-    }
+    }*/
 
     // Sort arraylist of WayPts by lat (y) value more north points first
     public static Comparator<WayPt> LatComparator = (p1, p2) -> {

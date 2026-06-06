@@ -2,8 +2,8 @@ package com.dnrcpw.cpwmobilepdf.model;
 
 public class TrackSegment {
     // One line segment
-    // x1, y1 one endpoint in lat, long
-    // x2, y2 other endpoint in lat long
+    // x1, y1 one endpoint in long, lat
+    // x2, y2 other endpoint in long, lat -105.0,40.34
     // Save the track so that it can redraw the user's path
     public float x1;
     public float x2;
@@ -16,10 +16,10 @@ public class TrackSegment {
         this.y2 = y2;
     }
 
-    public String getSegment(){
+    /*public String getSegment(){
         // Called by DBTrackHandler to add one line segment to the track
         return this.x1 + "," + this.y1 + "," + this.x2 + "," + this.y2;
-    }
+    }*/
 
     // getter routines uses for writing KMZ file
     public float getX1() {

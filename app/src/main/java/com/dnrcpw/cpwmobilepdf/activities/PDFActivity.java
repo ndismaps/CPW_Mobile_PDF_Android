@@ -1,6 +1,8 @@
 package com.dnrcpw.cpwmobilepdf.activities;
 
 import static android.graphics.Color.argb;
+
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -10,6 +12,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.ServiceConnection;
 import android.database.SQLException;
@@ -31,7 +34,9 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.text.TextPaint;
 import android.util.DisplayMetrics;
 import android.util.Log;
@@ -55,11 +60,14 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.widget.PopupMenu;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.content.res.ResourcesCompat;
 
@@ -78,6 +86,8 @@ import java.io.File;
 import java.io.OutputStream;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -232,6 +242,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     Double[] LatLong;
     EditText txtLatLong;
     Button menuBtn;
+    private static final int BACKGROUND_REQUEST_CODE = 1002;
+    boolean passedPermissions = false;
 
    //    @SuppressLint("SourceLockedOrientationActivity")
 
@@ -246,6 +258,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
             // Now you can safely call any public method inside TrackingService!
             updateUIWithServiceData();
+            currentTrackID = trackingService.getCurrentTrackId(); // needed if was in the background
         }
 
         @Override
@@ -253,6 +266,19 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             isBound = false;
         }
     };
+
+    // Add listener for checking how permissions are set for ignoring battery optimization
+    // This is necessary to run tracking in the background
+    private final ActivityResultLauncher<Intent> batteryOptimizationLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                // This code runs when the user returns from the Settings page
+                handleBatteryOptimizationResult();
+            });
+    private final ActivityResultLauncher<Intent> backgroundLocationLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                // This code runs when the user returns from the Settings page
+                handleBackgroundLocationResult();
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -451,14 +477,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 DBHandler db = DBHandler.getInstance(PDFActivity.this);
                 wayPts = db.getWayPts(mapName);
                 tracks = db.getTracks(mapName);
-            }catch (SQLException exc){
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    Toast.makeText(PDFActivity.this, "Failed to read tracks from database. " + exc.getMessage(), Toast.LENGTH_LONG).show();
-                });
-            }catch (Exception exc){
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    Toast.makeText(PDFActivity.this, "Failed to read tracks from database. " + exc.getMessage(), Toast.LENGTH_LONG).show();
-                });
+            } catch (Exception exc){
+                new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(PDFActivity.this, "Failed to read tracks from database. " + exc.getMessage(), Toast.LENGTH_LONG).show());
             }
             // Switch to main thread to push the data to your UI
             runOnUiThread(() -> {
@@ -847,9 +867,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                     addWayPtFlag = false;
                                 }
                                 // Switch to main thread to push the data to your UI
-                                runOnUiThread(() -> {
-                                    wayPts.SortPts();
-                                });
+                                runOnUiThread(() -> wayPts.SortPts());
                             });
                             // get the index of the new waypoint
                             for (int i2 = 0; i2 < wayPts.size(); i2++) {
@@ -1676,9 +1694,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             try {
                 maps = db2.getAllMaps();
             }catch (SQLException | NullPointerException e) {
-                new Handler(Looper.getMainLooper()).post(() -> {
-                    Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
-                });
+                new Handler(Looper.getMainLooper()).post(() -> Toast.makeText(PDFActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show());
             }
             // Update Tracks
             try {
@@ -1784,11 +1800,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         // update tracking distance for current track
         if (isBound && trackingService != null) {
             float distance = trackingService.getTotalDistance();
-            distanceTextView.setText("Distance from Service: " + distance + "m");
+            String txt = "Distance traveled: " + distance + "m";
+            distanceTextView.setText(txt);
         }
     }
 
-    // Add this inside SecondActivity.java just like you did in MainActivity
+    // Update Location
     private class LocationUpdateReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -1824,14 +1841,16 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 if (latBefore != -1 && currentTrackID != -1 &&
                         (latNow >= lat1 && latNow <= lat2) &&
                         (longNow >= long1 && longNow <= long2)) {
-                    //Track currentTrack = new Track();
+
+                    // Update display
                     Track currentTrack = tracks.get(currentTrackID);
                     currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
                     // Save new line segment in database
-                    dbExecutor.execute(() -> {
-                        DBHandler db = DBHandler.getInstance(PDFActivity.this);
-                        db.updateTrack(currentTrack);
-                    });
+                    // Handled in TrackingService onLocationResult
+                    //dbExecutor.execute(() -> {
+                    //    DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                    //    db.updateTrack(currentTrack);
+                    //});
                 }
 
                 //bearing = location.getBearing(); // 0-360 degrees 0 at North
@@ -2056,7 +2075,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     MenuItem action_showWayPts;
     MenuItem action_showTracks;
     MenuItem action_loadAdjacentMaps;
-    MenuItem settingsItem;
+    //MenuItem settingsItem;
     /*DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
         @SuppressLint("SourceLockedOrientationActivity")
         @Override
@@ -2227,7 +2246,16 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             String kmlContent = generateStyledTrackKml();
 
             // Export out to downloads folder
-            exportKmzToDownloads(PDFActivity.this, mapName, kmlContent);
+            String fileName = mapName;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                fileName = fileName + LocalDate.now() + LocalTime.now();
+            }else{
+                Date legacyDate = new Date();
+                // Formatting requires a separate utility class
+                SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                fileName = fileName + formatter.format(legacyDate);
+            }
+            exportKmzToDownloads(PDFActivity.this, fileName, kmlContent);
         }
         // All Waypoint Labels
         else if (id == R.id.action_showAll){
@@ -2236,9 +2264,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_showAll.isChecked()){
                 action_showAll.setChecked(false);
                 showAllWayPtLabels = false;
-                dbExecutor.execute(() -> {
-                    DBHandler.getInstance(PDFActivity.this).setShowAllWaypointLabels(0);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).setShowAllWaypointLabels(0));
             }
             // check show all labels, also turn on show waypoints
             else{
@@ -2260,17 +2286,13 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_showWayPts.isChecked()){
                 action_showWayPts.setChecked(false);
                 showAllWayPts = false;
-                dbExecutor.execute(() -> {
-                    DBHandler.getInstance(PDFActivity.this).setShowWaypoints(0);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).setShowWaypoints(0));
             }
             // check waypoints
             else{
                 action_showWayPts.setChecked(true);
                 showAllWayPts = true;
-                dbExecutor.execute(() -> {
-                    DBHandler.getInstance(PDFActivity.this).setShowWaypoints(1);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).setShowWaypoints(1));
             }
         }
         // Show Tracking
@@ -2280,17 +2302,13 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_showTracks.isChecked()){
                 action_showTracks.setChecked(false);
                 showTracks = false;
-                dbExecutor.execute(() -> {
-                    DBHandler.getInstance(PDFActivity.this).setShowTracks(0);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).setShowTracks(0));
             }
             // check tracks
             else{
                 action_showTracks.setChecked(true);
                 showTracks = true;
-                dbExecutor.execute(() -> {
-                   DBHandler.getInstance(PDFActivity.this).setShowTracks(1);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).setShowTracks(1));
             }
         }
         // Show AdjacentMaps when current location is on or close to other maps
@@ -2298,16 +2316,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             if (action_loadAdjacentMaps.isChecked()){
                 action_loadAdjacentMaps.setChecked(false);
                 loadAdjacentMaps = false;
-                dbExecutor.execute(() -> {
-                    DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(0);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(0));
             }
             else{
                 action_loadAdjacentMaps.setChecked(true);
                 loadAdjacentMaps = true;
-                dbExecutor.execute(() -> {
-                    DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(1);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).setLoadAdjMaps(1));
             }
         }
         else if (id == R.id.action_portrait){
@@ -2318,9 +2332,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LOCKED);
                 try{
                     myMap.setMapOrientation("portrait");// update user preference
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
-                    });
+                    dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).updateMap(myMap));
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2363,9 +2375,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             } else {
                 try{
                     myMap.setMapOrientation("none");// update user preference
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(PDFActivity.this).updateMap(myMap);
-                    });
+                    dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).updateMap(myMap));
                 } catch (Exception e){
                     Toast.makeText(PDFActivity.this,getResources().getString(R.string.problemReadingDatabase)+e.getMessage(),Toast.LENGTH_SHORT).show();
                 }
@@ -2407,24 +2417,11 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 turnTrackingOff();
             }
             // turn on add track icon
-            else {
-                int num = findAUniqueTrackName();
-                tracks.add(mapName,"Track "+num, "cyan", null);
-                currentTrackID = tracks.size()-1;
-                dbExecutor.execute(() -> {
-                    DBHandler db = DBHandler.getInstance(PDFActivity.this);
-                    long newId = db.addTrack(tracks.get(currentTrackID));
-                    // Switch to main thread to push the data to your UI
-                    runOnUiThread(() -> {
-                        tracks.get(currentTrackID).setId(newId);
-                        addTrackFlag = true; // tracking icon is active
-                        clickedTrack = -1; // hide balloon popups
-                        showTracks = true;
-                        action_showTracks.setChecked(true);
-                        trackMenuItem.setIcon(R.drawable.ic_cyan_track);
-                        Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOn), Toast.LENGTH_LONG).show();
-                    });
-                });
+            else if (passedPermissions) {
+                turnTrackingOn();
+            }else{
+                // check if user allowed background location and ignoring of battery optimization. Needed so it can run in the background!
+                checkTrackingPermissions();
             }
         }
         else if (id == R.id.action_add_way_pt_menu) {
@@ -2537,6 +2534,130 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         return super.onOptionsItemSelected(item);
     }
 
+    private void checkTrackingPermissions(){
+        // TODO may need to add this to prevent the system from killing your tracking service to save power: Manifest.permission.WAKE_LOCK
+        // Check Background Location Permission
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            // Request Background Location
+            showBackgroundRationaleDialog();
+        } else {
+            // Permission already granted, check battery optimization
+            checkBatteryOptimization();
+        }
+    }
+    private void showBackgroundRationaleDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("Allow Location Access All the Time")
+                .setMessage("To record your tracks while this app is not active, please select 'Allow all the time' on the next Settings screen under: Permissions, Location.")
+                .setPositiveButton("Go to Settings", (dialog, which) -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // Android 11+
+                        // System API blocks direct popups. You must open app details settings.
+                        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                        Uri uri = Uri.fromParts("package", getPackageName(), null);
+                        intent.setData(uri);
+                        // Launch the intent using with a callback
+                        backgroundLocationLauncher.launch(intent);
+                    } else {
+                        // Android 10 supports a targeted system dialog popup
+                        ActivityCompat.requestPermissions(PDFActivity.this,
+                                new String[]{
+                                    Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                }, BACKGROUND_REQUEST_CODE);
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == BACKGROUND_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                checkBatteryOptimization();
+            }
+            else {
+                // denied background location service
+                handleBackgroundExemptionDenied();
+            }
+        }
+    }
+    private void handleBackgroundLocationResult() {
+        // called from showBackgroundRationaleDialog intent
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            // denied background location service
+            handleBackgroundExemptionDenied();
+        } else{
+            // user accepted background locatoin permission 'allow all the time'
+            checkBatteryOptimization();
+        }
+    }
+    private void handleBackgroundExemptionDenied(){
+        new AlertDialog.Builder(this)
+                .setTitle("Warning")
+                .setMessage("Tracking will not work without this permission. Tracks are stored locally on your phone and never shared. You may also download a KMZ file of you tracks and waypoints to use with Google Maps for personal use.")
+                .setPositiveButton("Add Tracking", (dialog, which) -> showBackgroundRationaleDialog())
+                .setNegativeButton("No Tracking",  (dialog, which) -> dialog.dismiss())
+                .setCancelable(false) // Prevents closing the dialog by clicking outside
+                .show();
+    }
+
+    public void checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            String packageName = getPackageName();
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Turn off Battery Optimization")
+                        .setMessage("To record your tracks while this app is not active, it also needs to run in the background without battery restrictions. Tap Allow on the next screen to prevent GPS dropouts.")
+                        .setPositiveButton("Go to Settings", (dialog, which) -> {
+                            // Prompt user directly via system dialog
+                            Intent intent = new Intent();
+                            intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                            intent.setData(Uri.parse("package:" + packageName));
+                            // Launch the intent using with callback
+                            batteryOptimizationLauncher.launch(intent);
+
+                        })
+                        .setNegativeButton("Cancel",  (dialog, which) -> {
+                            dialog.dismiss();
+                            // Leave tracks turned off
+                        })
+                        .setCancelable(false) // Prevents closing the dialog by clicking outside
+                        .show();
+            } else {
+                turnTrackingOn();
+            }
+        }else {
+            turnTrackingOn();
+        }
+    }
+
+    private void handleBatteryOptimizationResult() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+
+            if (powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+                // User allowed the exemption
+                turnTrackingOn();
+            } else {
+                // User denied or cancelled the prompt
+                handleBatteryExemptionDenied();
+            }
+        }
+    }
+    private void handleBatteryExemptionDenied(){
+        new AlertDialog.Builder(this)
+                .setTitle("Warning")
+                .setMessage("Tracking will not work without this permission. Tracks are stored locally on your phone and never shared. You may also download a KMZ file of you tracks and waypoints to use with Google Maps for personal use.")
+                .setPositiveButton("Add Tracking", (dialog, which) -> checkBatteryOptimization())
+                .setNegativeButton("No Tracking",  (dialog, which) -> dialog.dismiss())
+                .setCancelable(false) // Prevents closing the dialog by clicking outside
+                .show();
+    }
     // Write waypoints and tracks to KML format
     private String generateStyledTrackKml() {
         StringBuilder kml = new StringBuilder();
@@ -2545,7 +2666,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         // Crucial: define the Google extension namespace (gx) for tracks
         kml.append("     xmlns:gx=\"http://www.google.com/kml/ext/2.2\">\n");
         kml.append("  <Document>\n");
-        kml.append("    <name>"+mapName+"</name>\n");
+        kml.append("    <name>").append(mapName).append("</name>\n");
 
         // Define Style (Format: AABBGGRR - Alpha, Blue, Green, Red)
         kml.append("    <Style id=\"cyan\">\n");
@@ -2571,9 +2692,9 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         kml.append("      </LineStyle>\n");
         kml.append("    </Style>\n");
 
-        // 2. Add Track Placemark
+        // Add Track Placemarks
         if (tracks != null && tracks.size() > 0) {
-            for (var i=0; i<tracks.size(); i++) {
+            for (int i=0; i<tracks.size(); i++) {
                 kml.append("    <Placemark>\n");
                 kml.append("      <name>Styled Activity Route</name>\n");
                 kml.append("      <styleUrl>#").append(tracks.get(i).getColorName()).append("</styleUrl>\n"); // Link to style id above
@@ -2611,22 +2732,25 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             kml.append("    </Placemark>\n");
         }
 
-        // 2. Generate separate, individual Point Placemarks (Optional)
-        /*if (individualPlacemarks != null) {
-            int index = 1;
-            for (GeoPoint point : individualPlacemarks) {
-                kml.append("    <Placemark>\n");
-                kml.append("      <name>Waypoint ").append(index++).append("</name>\n");
-                kml.append("      <Point>\n");
-                kml.append("        <coordinates>")
-                        .append(point.longitude).append(",")
-                        .append(point.latitude).append(",")
-                        .append(point.altitude)
-                        .append("</coordinates>\n");
-                kml.append("      </Point>\n");
-                kml.append("    </Placemark>\n");
-            }
-        }*/
+        // Generate separate, individual Waypoint Placemarks
+        for (int index = 0; index < wayPts.size(); index++) {
+            kml.append("    <Placemark>\n");
+            kml.append("      <name>").append(wayPts.get(index).getName()).append("</name>\n");
+            kml.append("      <Point>\n");
+            // Bind a single timestamp to the entire Placemark feature
+            String timestamp = convertStringToKmlTimestamp(wayPts.get(index).getTime(),"yyyy-MM-dd HH:mm:ss");
+            kml.append("      <TimeStamp>\n");
+            kml.append("        <when>").append(timestamp).append("</when>\n");
+            kml.append("      </TimeStamp>\n");
+            kml.append("        <coordinates>")
+                    .append(wayPts.get(index).getLat()).append(",")
+                    .append(wayPts.get(index).getLong()).append(",")
+                    .append(0)
+                    .append("</coordinates>\n");
+            kml.append("      </Point>\n");
+            kml.append("    </Placemark>\n");
+        }
+
 
         kml.append("  </Document>\n");
         kml.append("</kml>");
@@ -2648,11 +2772,15 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             // 2. Format out to clean ISO 8601 KML structure
             SimpleDateFormat kmlFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
             kmlFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-
-            return kmlFormat.format(parsedDate);
+            if (parsedDate != null)
+                return kmlFormat.format(parsedDate);
+            else return "";
 
         } catch (ParseException e) {
-            e.printStackTrace();
+            if (e.getMessage() != null)
+                Log.e("PDFActivity","Error in convertStringToKmlTimestamp: "+e.getMessage());
+            else
+                Log.e("PDFActivity","Error in convertStringToKmlTimestamp");
             return ""; // Return empty or handle error fallback gracefully
         }
     }
@@ -2666,7 +2794,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
         }
 
-        Uri uri = null;
+        Uri uri;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             uri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
         }else{
@@ -2695,7 +2823,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
                 // File is automatically saved when streams close
             } catch (Exception e) {
-                e.printStackTrace();
+                if (e.getMessage() != null)
+                    Log.e("PDFActivity","Error in exportKmzToDownloads: "+e.getMessage());
+                else
+                    Log.e("PDFActivity","Error in exportKmzToDownloads");
             }
         }
     }
@@ -2725,7 +2856,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 if (progress < 1) progress = 1;
-                intervalLabel.setText("Manual Interval: " + progress + "s");
+                String txt = "Manual Interval: " + progress + "s";
+                intervalLabel.setText(txt);
             }
 
             @Override
@@ -2773,7 +2905,36 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         }
     }
 
-    // Turn tracking odd
+    // Turn Tracking On
+    private void turnTrackingOn(){
+        passedPermissions = true; // user allowed tracks to run in the background
+        int num = findAUniqueTrackName();
+        tracks.add(mapName,"Track "+num, "cyan", null);
+        currentTrackID = tracks.size()-1;
+        dbExecutor.execute(() -> {
+            DBHandler db = DBHandler.getInstance(PDFActivity.this);
+            long newId = db.addTrack(tracks.get(currentTrackID));
+            db.initTrack(mapName, "Track "+num, "cyan", tracks.get(currentTrackID).getTime());
+            // Switch to main thread to push the data to your UI
+            runOnUiThread(() -> {
+                tracks.get(currentTrackID).setId(newId);
+                addTrackFlag = true; // tracking icon is active
+                clickedTrack = -1; // hide balloon popups
+                showTracks = true;
+                action_showTracks.setChecked(true);
+                trackMenuItem.setIcon(R.drawable.ic_cyan_track);
+                Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOn), Toast.LENGTH_LONG).show();
+            });
+        });
+        // start recording tracks to the database calls TrackingService
+
+        Intent intent = new Intent(this, TrackingService.class);
+        intent.setAction(TrackingService.ACTION_TOGGLE_RECORDING);
+        intent.putExtra(TrackingService.EXTRA_IS_RECORDING, true);
+        intent.putExtra(TrackingService.EXTRA_CURRENT_TRACK_ID, currentTrackID);
+        startService(intent);
+    }
+    // Turn tracking off
     private void turnTrackingOff(){
         if (addTrackFlag)
             Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOff), Toast.LENGTH_LONG).show();
@@ -2781,6 +2942,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         trackMenuItem.setIcon(R.drawable.ic_gray_track); // set to gray track
         currentTrackID = -1;
         clickedTrack = -1;
+        // Stop recording tracks to the database
+        Intent intent = new Intent(this, TrackingService.class);
+        intent.setAction(TrackingService.ACTION_TOGGLE_RECORDING);
+        intent.putExtra(TrackingService.EXTRA_IS_RECORDING, false);
+        intent.putExtra(TrackingService.EXTRA_CURRENT_TRACK_ID, currentTrackID);
+        startService(intent);
     }
     // ADJUST WAYPOINT MENU
     private final ActionMode.Callback mActionModeCallback = new ActionMode.Callback() {
@@ -2826,9 +2993,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 wayPt.setY((float) latitude);
                 String location = String.format(Locale.US,"%.5f, %.5f", latitude,longitude);
                 wayPt.setLocation(location);
-                dbExecutor.execute(() -> {
-                    DBHandler.getInstance(PDFActivity.this).updateWayPt(wayPt);
-                });
+                dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).updateWayPt(wayPt));
                 mode.finish(); //hide menu
                 return false;
             }
@@ -2865,9 +3030,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //'DELETE' button clicked, remove waypoint or track
                     // delete waypoint
                     WayPt wayPt = wayPts.get(del_id);
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(PDFActivity.this).deleteWayPt(wayPt);
-                    });
+                    dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).deleteWayPt(wayPt));
                     wayPts.remove(wayPt.getX(), wayPt.getY());
                     deleting = false;
                     pdfView.invalidate();
@@ -2919,9 +3082,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             switch (which){
                 case DialogInterface.BUTTON_POSITIVE:
                     //'DELETE' button clicked, remove waypoints from map
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(PDFActivity.this).deleteWayPts(mapName);
-                    });
+                    dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).deleteWayPts(mapName));
                     wayPts.removeAll();
                     deleting = false;
                     pdfView.invalidate();
@@ -2942,9 +3103,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             switch (which){
                 case DialogInterface.BUTTON_POSITIVE:
                     //'DELETE' button clicked, remove tracks from map
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(PDFActivity.this).deleteTracks(mapName);
-                    });
+                    dbExecutor.execute(() -> DBHandler.getInstance(PDFActivity.this).deleteTracks(mapName));
                     tracks.removeAll();
                     deleting = false;
                     turnTrackingOff();

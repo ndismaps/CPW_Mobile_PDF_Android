@@ -30,7 +30,8 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -40,10 +41,6 @@ import androidx.core.app.ActivityCompat;
 import com.dnrcpw.cpwmobilepdf.R;
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.dnrcpw.cpwmobilepdf.model.PDFMap;
-import com.google.android.gms.location.FusedLocationProviderClient;
-import com.google.android.gms.location.LocationCallback;
-import com.google.android.gms.location.LocationRequest;
-import com.google.android.gms.location.Priority;
 import com.google.android.gms.tasks.Task;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.play.core.appupdate.AppUpdateInfo;
@@ -71,7 +68,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     Toolbar toolbar;
     int selectedId;
     private static final int FOREGROUND_REQUEST_CODE = 1001;
-    private static final int BACKGROUND_REQUEST_CODE = 1002;
+    //private static final int BACKGROUND_REQUEST_CODE = 1002;
     private LocationUpdateReceiver locationReceiver;
     double latNow, latBefore = 0.0;
     double longNow, longBefore = 0.0;
@@ -87,6 +84,13 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     // Edit Menu
     //ActionMode mActionMode;
 
+    // Add listener for checking how permissions are set for fine location
+    // This is necessary to run tracking in the background
+    private final ActivityResultLauncher<Intent> locationSettingsLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                // This code runs when the user returns from the Settings page
+                handleLocationResult();
+            });
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -142,11 +146,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             });
 
             // SET UP LOCATION SERVICES 5-13-26
-            if (checkLocationPermissions()) {
-                startTrackingService();
-            } else {
-                checkAndRequestTracking();
-            }
+            checkLocationPermissions();
 
             // Check if GPS is enabled
             if (!isGPSEnabled(MainActivity.this)) {
@@ -173,69 +173,116 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             };
         }catch (Exception e) {
             if (e.getMessage() != null)
-                Log.e("Main", e.getMessage());
+                Log.e("MainActivity", "Check for updates in onCreate: "+e.getMessage());
+            else Log.e("MainActivity", "Check for updates in onCreate");
         }
     }
 
     // Setup Tracking Service 5-13-26
-    private boolean checkLocationPermissions() {
-        // TODO may need to add this to prevent the system from killing your tracking service to save power: Manifest.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Manifest.permission.WAKE_LOCK
-        int fineLocation = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            int backgroundLocation = ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION);
-            return fineLocation == PackageManager.PERMISSION_GRANTED && backgroundLocation == PackageManager.PERMISSION_GRANTED;
-        }
-        return fineLocation == PackageManager.PERMISSION_GRANTED;
-    }
+    private void checkLocationPermissions() {
+        // TODO may need to add this to prevent the system from killing your tracking service to save power: Manifest.permission.WAKE_LOCK
+        // 1. Check Background Location Permission
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
 
-
-    // 1. Trigger the flow
-    private void checkAndRequestTracking() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-            // Foreground is good! Now verify background status
-            checkBackgroundAccess();
+            // Request Foreground & Background Location
+            showLocationRationaleDialog();
         } else {
-            // Step 1: Force foreground request first
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION},
-                    FOREGROUND_REQUEST_CODE);
+            // Permission already granted, start location services
+            startTrackingService();
         }
     }
+    /*public void checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            String packageName = getPackageName();
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+
+            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                new AlertDialog.Builder(this)
+                        .setTitle("Enable Background Tracking")
+                        .setMessage("To map your route while your phone is locked, this app needs to run in the background without battery restrictions. Tap Allow on the next screen to prevent GPS dropouts.")
+                        .setPositiveButton("Go to Settings", (dialog, which) -> {
+                            // Prompt user directly via system dialog
+                            Intent intent = new Intent();
+                            intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                            intent.setData(Uri.parse("package:" + packageName));
+                            // Launch the intent using with callback
+                            batteryOptimizationLauncher.launch(intent);
+
+                        })
+                        .setNegativeButton("Cancel",  (dialog, which) -> {
+                            dialog.dismiss();
+                            handleExemptionDenied();
+                        })
+                        .setCancelable(false) // Prevents closing the dialog by clicking outside
+                        .show();
+            }
+            else {
+                startTrackingService();
+            }
+        }
+        startTrackingService();
+    }*/
+
+
+    private void handleLocationResult() {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            handleExemptionDenied();
+        }else{
+            startTrackingService();
+        }
+    }
+     private void handleExemptionDenied(){
+         new AlertDialog.Builder(this)
+                 .setTitle("Warning")
+                 .setMessage("The app will not work without location permissions. Please select 'Allow all the time' or 'Allow only while using the app'. Selecting 'Ask every time' will not work.")
+                 .setPositiveButton("Continue", (dialog, which) -> showLocationRationaleDialog())
+                 .setNegativeButton("Exit App",  (dialog, which) -> {
+                     dialog.dismiss();
+                     // Close the app
+                     System.exit(1);
+                 })
+                 .setCancelable(false) // Prevents closing the dialog by clicking outside
+                 .show();
+     }
 
     // 2. Validate background state sequentially
-    private void checkBackgroundAccess() {
+   /* private void checkBackgroundAccess() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) { // Android 10+
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                startTrackingService();
+                checkBatteryOptimization();
             } else {
                 // Step 2: Educate user before opening system settings
                 showBackgroundRationaleDialog();
             }
         } else {
             // Older versions automatically grant background access if foreground is active
-            startTrackingService();
+            checkBatteryOptimization();
         }
-    }
+    }*/
 
-    private void showBackgroundRationaleDialog() {
+    private void showLocationRationaleDialog() {
         new AlertDialog.Builder(this)
-                .setTitle("Background Location Required")
-                .setMessage("This app maps routes while your screen is off. Please select 'Allow all the time' on the next Settings screen under: Permissions Location, Allowed Location, to enable background logging.")
-                .setPositiveButton("Settings", (dialog, which) -> {
+                .setTitle("Allow Location Access")
+                .setMessage("This app displays distance to each map and shows your current location on maps. Please select 'Allow' on the next Settings screen under: Permissions, Location.")
+                .setPositiveButton("Go to Settings", (dialog, which) -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) { // Android 11+
                         // System API blocks direct popups. You must open app details settings.
                         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
                         Uri uri = Uri.fromParts("package", getPackageName(), null);
                         intent.setData(uri);
-                        startActivity(intent);
+                        //startActivity(intent);
+                        locationSettingsLauncher.launch(intent); // use this instead so we can run code after it returns
                     } else {
                         // Android 10 supports a targeted system dialog popup
                         ActivityCompat.requestPermissions(MainActivity.this,
-                                new String[]{Manifest.permission.ACCESS_BACKGROUND_LOCATION},
-                                BACKGROUND_REQUEST_CODE);
+                                new String[]{
+                                        Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                }, FOREGROUND_REQUEST_CODE);
                     }
                 })
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("Exit", (dialog, which) -> finish())
                 .show();
     }
 
@@ -246,13 +293,20 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         if (requestCode == FOREGROUND_REQUEST_CODE) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 // Foreground permission secured, proceed seamlessly to Step 2
-                checkBackgroundAccess();
-            }
-        } else if (requestCode == BACKGROUND_REQUEST_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 startTrackingService();
+            }else {
+                // denied foreground location service
+                finish();
             }
-        }
+        } /*else if (requestCode == BACKGROUND_REQUEST_CODE) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                checkBatteryOptimization();
+            }
+            else {
+                // denied background location service
+                finish();
+            }
+        }*/
     }
 
     private void startTrackingService() {
@@ -423,7 +477,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                     APP_UPDATE_REQUEST_CODE);
 
         } catch (IntentSender.SendIntentException e) {
-            e.printStackTrace();
+            Log.e("UPDATE ERROR", "startUpdateFlow: ", e );
         }
     }
     // Update Downloaded? Displays the dialog notification and call to action.
@@ -528,7 +582,10 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 });
             }
         } catch(Exception tr) {
-            Log.e("Main",tr.getMessage());
+            if (tr.getMessage() != null)
+                Log.e("MainActivity","Error in onResume: "+tr.getMessage());
+            else
+                Log.e("MainActivity","Error in onResume");
         }
     }
 
@@ -543,7 +600,10 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             // Unregister to prevent memory leaks when app is in background
             unregisterReceiver(locationReceiver);
         } catch(Exception tr) {
-            Log.e("Main",tr.getMessage());
+            if (tr.getMessage() != null)
+                Log.e("MainActivity","Error in onPause: "+tr.getMessage());
+            else
+                Log.e("MainActivity","Error in onPause");
         }
     }
 
@@ -760,9 +820,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("name");
-                    });
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("name"));
                     //dbHandler.setMapSort("name");
                 }
                 catch (SQLException e){
@@ -775,10 +833,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("namerev");
-                    });
-                    //dbHandler.setMapSort("namerev");
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("namerev"));
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -790,10 +845,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("date");
-                    });
-                    //dbHandler.setMapSort("date");
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("date"));
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -805,10 +857,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("daterev");
-                    });
-                    //dbHandler.setMapSort("daterev");
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("daterev"));
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -820,10 +869,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("size");
-                    });
-                    //dbHandler.setMapSort("size");
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("size"));
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -835,10 +881,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("sizerev");
-                    });
-                    //dbHandler.setMapSort("sizerev");
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("sizerev"));
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -851,10 +894,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter); // scrolls to the top
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("proximity");
-                    });
-                    //dbHandler.setMapSort("proximity");
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("proximity"));
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -867,10 +907,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 lv.setAdapter(myAdapter); // scrolls to the top
                 try {
                     // save user sort preference in database on a background thread
-                    dbExecutor.execute(() -> {
-                        DBHandler.getInstance(MainActivity.this).setMapSort("proximityrev");
-                    });
-                    //dbHandler.setMapSort("proximityrev");
+                    dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("proximityrev"));
                 }
                 catch (SQLException e){
                     Toast.makeText(getApplicationContext(), "Error writing to app database: "+e.getMessage(), Toast.LENGTH_LONG).show();
@@ -928,7 +965,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         TextView msg = findViewById(R.id.txtMessage);
         sortTitle = findViewById(R.id.sortTitle);
         Spinner sortBy = findViewById(R.id.sortBy);
-        if (myAdapter.pdfMaps.size() == 0){
+        if (myAdapter.pdfMaps.isEmpty()){
             msg.setVisibility(View.VISIBLE);
             sortTitle.setVisibility(View.GONE);
             sortBy.setVisibility(View.GONE);
@@ -952,7 +989,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                     myAdapter.removeAll(); // also removes all waypts and tracks
                     // Disable "Delete all Imported Maps" if there aren't any maps
                     MenuItem delMapsMenuItem = toolbar.getMenu().findItem(R.id.action_deleteAll);
-                    delMapsMenuItem.setVisible(myAdapter.pdfMaps.size() != 0); // setEnabled(myAdapter.pdfMaps.size() != 0);
+                    delMapsMenuItem.setVisible(!myAdapter.pdfMaps.isEmpty()); // setEnabled(myAdapter.pdfMaps.size() != 0);
                     // Display note if no records found
                     showHideNoImportsMessage();
                     break;
@@ -974,7 +1011,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
         MenuItem delMapsMenuItem = toolbar.getMenu().findItem(R.id.action_deleteAll);
         if (delMapsMenuItem != null && myAdapter != null && myAdapter.pdfMaps != null) {
-            delMapsMenuItem.setVisible(myAdapter.pdfMaps.size() != 0);
+            delMapsMenuItem.setVisible(!myAdapter.pdfMaps.isEmpty());
         }
         return true;
     }

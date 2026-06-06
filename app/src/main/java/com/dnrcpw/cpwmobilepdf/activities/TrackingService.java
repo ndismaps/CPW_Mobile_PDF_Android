@@ -14,6 +14,8 @@ import android.os.IBinder;
 import android.os.Looper;
 import androidx.annotation.NonNull;import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+
+import com.dnrcpw.cpwmobilepdf.data.DBHandler;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -22,7 +24,7 @@ import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
 
 public class TrackingService extends Service {
-    private static final String CHANNEL_ID = "Tracking_Channel";
+    private static final String CHANNEL_ID = "LocationTrackingChannel";
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
     // Global tracker configuration (Default values)
@@ -30,11 +32,19 @@ public class TrackingService extends Service {
     private long currentFastestIntervalMillis = 5000; // 5 seconds default
     private boolean isAutoAdjustEnabled = true; // Toggle for speed-based adjustment
     private float lastSpeedMps = 0.0f;
-
+    // used to write track data to the database
+    public static final String ACTION_TOGGLE_RECORDING = "com.dnrcpw.cpwmobilepdf.TOGGLE_RECORDING";
+    public static final String EXTRA_IS_RECORDING = "extra_is_recording";
+    public static final String EXTRA_CURRENT_TRACK_ID = "extra_current_track_id";
+    private DBHandler dbHelper;
+    // State flag controlling whether updates write to SQLite
+    private boolean isRecordingTracks = false;
+    private int currentTrackId = -1;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        dbHelper = new DBHandler(getApplicationContext());
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         locationCallback = new LocationCallback() {
@@ -60,7 +70,7 @@ public class TrackingService extends Service {
                         adjustIntervalBasedOnSpeed(speed);
                     }
 
-                    // Create an intent with a custom action string
+                    // Create an intent with a custom action string to update current location/distance to map
                     Intent intent = new Intent("ACTION_LOCATION_UPDATE");
                     intent.putExtra("extra_latitude", latitude);
                     intent.putExtra("extra_longitude", longitude);
@@ -71,6 +81,15 @@ public class TrackingService extends Service {
                     // Broadcast to the system (restricted to your app package for security)
                     intent.setPackage(getPackageName());
                     sendBroadcast(intent);
+
+                    // Conditionally save to SQLite database if recording is toggled on
+                    if (isRecordingTracks) {
+                        dbHelper.updateTrack(
+                                latitude,
+                                longitude,
+                                currentTrackId
+                        );
+                    }
                 }
             }
         };
@@ -80,6 +99,9 @@ public class TrackingService extends Service {
     public float getTotalDistance() {
         // Assuming you track totalDistanceTraveled globally here
         return 1500.5f;
+    }
+    public int getCurrentTrackId(){
+        return currentTrackId;
     }
     private void adjustIntervalBasedOnSpeed(float speedMps) {
         long newInterval;
@@ -106,35 +128,46 @@ public class TrackingService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        createNotificationChannel();
-        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Location Tracking")
-                .setContentText("Running in the background...")
-                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build();
+        if (intent != null) {
+            // Handle requests to turn recording on or off
+            if (ACTION_TOGGLE_RECORDING.equals(intent.getAction())) {
+                isRecordingTracks = intent.getBooleanExtra(EXTRA_IS_RECORDING, false);
+                currentTrackId = intent.getIntExtra(EXTRA_CURRENT_TRACK_ID, -1);
+                updateNotificationText();
+            } else {
+            /*Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle("Location Tracking")
+                    .setContentText("Running in the background...")
+                    .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setOngoing(true)
+                    .build();
 
-        // Android 14 (API 34) requires specifying the service type at runtime
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
-        } else {
-            startForeground(1, notification);
-        }
+            // Android 14 (API 34) UPSIDE_DOWN_CAKE requires specifying the service type at runtime
+            // Android Q, API 29+ requires specifying foreground service type at runtime.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+            } else {
+                startForeground(1, notification);
+            }*/
 
-        // Check if the Intent contains custom interval update instructions
-        if (intent != null && intent.hasExtra("update_interval")) {
-            // User overridden via SeekBar: Disable auto-speed adjustment
-            isAutoAdjustEnabled = false;
-            long newInterval = intent.getLongExtra("update_interval", 10000);
-            long newFastestInterval = intent.getLongExtra("update_fastest_interval", 5000);
+                // Check if the Intent contains custom interval update instructions
+                if (intent != null && intent.hasExtra("update_interval")) {
+                    // User overridden via SeekBar: Disable auto-speed adjustment
+                    isAutoAdjustEnabled = false;
+                    long newInterval = intent.getLongExtra("update_interval", 10000);
+                    long newFastestInterval = intent.getLongExtra("update_fastest_interval", 5000);
 
-            // Trigger the runtime change function
-            changeLocationInterval(newInterval, newFastestInterval);
-        } else if (intent != null && intent.hasExtra("enable_auto")) {
-            isAutoAdjustEnabled = intent.getBooleanExtra("enable_auto", true);
-        } else {
-            // First-time setup launch code
-            startLocationUpdates();
+                    // Trigger the runtime change function
+                    changeLocationInterval(newInterval, newFastestInterval);
+                } else if (intent != null && intent.hasExtra("enable_auto")) {
+                    isAutoAdjustEnabled = intent.getBooleanExtra("enable_auto", true);
+                } else {
+                    // First-time setup launch code
+                    startForegroundWithNotification();
+                    startLocationUpdates();
+                }
+            }
         }
         return START_STICKY;
     }
@@ -178,11 +211,49 @@ public class TrackingService extends Service {
         }
     }
 
-    private void createNotificationChannel() {
+    /*private void startContinuousTracking() {
+        // Configure high accuracy continuous updates
+        LocationRequest backgroundLocationRequest = new LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY, currentIntervalMillis) // Request every 10 seconds
+                .setMinUpdateIntervalMillis(currentFastestIntervalMillis)       // Fastest interval 5 seconds
+                .build();
+
+        try {
+            // Request the continuous tracking updates
+            fusedLocationClient.requestLocationUpdates(
+                    backgroundLocationRequest,
+                    locationCallback,
+                    Looper.getMainLooper());
+        } catch (SecurityException e) {
+            // Handle edge case where user revoked permissions mid-run
+        }
+    }*/
+
+    private void updateNotificationText() {
+        String contentText = isRecordingTracks
+                ? "Recording track data to database..."
+                : "Streaming active location to map UI...";
+
+        Notification notification = new NotificationCompat.Builder(this, "LocationTrackingChannel")
+                .setContentTitle("Location Tracking Active")
+                .setContentText(contentText)
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true)
+                .build();
+
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) {
+            manager.notify(12345, notification);
+        }
+    }
+
+    private void startForegroundWithNotification() {
+        // for current location and distance to map
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel serviceChannel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Tracking Service Channel",
+                    "Continuous Location Tracking Channel",
                     NotificationManager.IMPORTANCE_LOW
             );
             NotificationManager manager = getSystemService(NotificationManager.class);
@@ -190,14 +261,29 @@ public class TrackingService extends Service {
                 manager.createNotificationChannel(serviceChannel);
             }
         }
+
+        // for continuous tracking
+        Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+                .setContentTitle("Location Tracking Active")
+                .setContentText("Streaming active location to map UI...")
+                .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setOngoing(true)
+                .build();
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(12345, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
+        } else {
+            startForeground(12345, notification);
+        }
     }
 
     @Override
     public void onDestroy() {
-        super.onDestroy();
         if (fusedLocationClient != null && locationCallback != null) {
             fusedLocationClient.removeLocationUpdates(locationCallback);
         }
+        super.onDestroy();
     }
 
     // A service needs an inner IBinder class to allow multiple activities to connect to it.

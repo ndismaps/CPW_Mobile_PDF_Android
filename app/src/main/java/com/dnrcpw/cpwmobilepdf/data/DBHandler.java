@@ -80,7 +80,7 @@ public class DBHandler extends SQLiteOpenHelper {
         return sInstance;
     }
     private final Context context;
-    private DBHandler(Context c) throws SQLException {
+    public DBHandler(Context c) throws SQLException {
         super(c, DATABASE_NAME, null, DATABASE_VERSION);
         this.context = c;
     }
@@ -129,8 +129,8 @@ public class DBHandler extends SQLiteOpenHelper {
                      createWayPtTable(db1);
                      createTracksTable(db1);
                      // Migrate data from the other two standalone files into this open 'db1' instance
-                     migrateExternalDatabase(context, db1, "wayPtsInfo.db", "wayPts");
-                     migrateExternalDatabase(context, db1, "tracksInfo.db", "tracks");
+                     migrateExternalDatabase(context, db1, "wayPtsInfo", "wayPts");
+                     migrateExternalDatabase(context, db1, "tracksInfo", "tracks");
                  case 2:
                      // Version 3 new stuff
                      db1.execSQL("ALTER TABLE " + TABLE_SETTINGS + " ADD COLUMN " + KEY_SHOW_TRACKS + " TEXT");
@@ -140,16 +140,16 @@ public class DBHandler extends SQLiteOpenHelper {
                      createWayPtTable(db1);
                      createTracksTable(db1);
                      // Migrate data from the other two standalone files into this open 'db1' instance
-                     migrateExternalDatabase(context, db1, "wayPtsInfo.db", "wayPts");
-                     migrateExternalDatabase(context, db1, "tracksInfo.db", "tracks");
+                     migrateExternalDatabase(context, db1, "wayPtsInfo", "wayPts");
+                     migrateExternalDatabase(context, db1, "tracksInfo", "tracks");
                  case 3:
                      // Version 4 new stuff
                      // Create Tables if they don't exist
                      createWayPtTable(db1);
                      createTracksTable(db1);
                      // Migrate data from the other two standalone files into this open 'db1' instance
-                     migrateExternalDatabase(context, db1, "wayPtsInfo.db", "wayPts");
-                     migrateExternalDatabase(context, db1, "tracksInfo.db", "tracks");
+                     migrateExternalDatabase(context, db1, "wayPtsInfo", "wayPts");
+                     migrateExternalDatabase(context, db1, "tracksInfo", "tracks");
              }
         }
     }
@@ -232,8 +232,7 @@ public class DBHandler extends SQLiteOpenHelper {
     // Adding new PDF Map
     public Integer addMap(PDFMap map) throws SQLiteException {
         SQLiteDatabase db = this.getWritableDatabase();
-        int index = addMapToMapsTable(db, map);
-        return index;
+        return addMapToMapsTable(db, map);
     }
 
     private Integer addMapToMapsTable(SQLiteDatabase db1, PDFMap map) {
@@ -291,7 +290,7 @@ public class DBHandler extends SQLiteOpenHelper {
                 map.setThumbnail(cursor.getString(5));
                 map.setName(cursor.getString(6));
                 map.setFileSize(cursor.getString(7));
-                if (map.getFileSize() == "") {
+                if (map.getFileSize().equals("")) {
                     try {
                         File file = new File(map.getPath());
                         String fileSize;
@@ -308,7 +307,7 @@ public class DBHandler extends SQLiteOpenHelper {
                     }
                 }
                 map.setDistToMap(cursor.getString(8));
-                if (map.getDistToMap().equals("")) {
+                if (map.getDistToMap().isEmpty()) {
                     map.setMiles(0.0);
                 } else {
                     try {
@@ -539,6 +538,11 @@ public class DBHandler extends SQLiteOpenHelper {
     //--------------------------
     // Tracks Table
     //--------------------------
+    String trackMapName = "";
+    String trackDesc = "";
+    String trackColor = "";
+    String trackTime = "";
+    String trackLineSegments = "";
     private void createTracksTable(SQLiteDatabase db1) throws SQLException {
         String CREATE_TRACKS_TABLE = "CREATE TABLE " + TABLE_TRACKS + "("
                 + KEY_ID + " INTEGER PRIMARY KEY, " + KEY_MAPNAME + " TEXT, "
@@ -546,7 +550,32 @@ public class DBHandler extends SQLiteOpenHelper {
                 + KEY_COLOR + " TEXT, " + KEY_TIME + " TEXT)";
         db1.execSQL(CREATE_TRACKS_TABLE);
     }
+    public void initTrack(String mapName, String desc, String color, String time){
+        // Save these when user starts a track, so that the background service, MyGlobalLocationReceiver can insert the new track
+        this.trackMapName = mapName;
+        this.trackDesc = desc;
+        this.trackColor = color;
+        this.trackTime = time;
+    }
 
+    public synchronized void updateTrack(double latitude, double longitude, int currentTrackId){
+        // save the line segments when app is in the background and foreground
+        // Called by TrackingService
+        if (!this.trackLineSegments.isEmpty()) trackLineSegments += ",";
+        this.trackLineSegments = trackLineSegments+longitude+","+latitude;
+        SQLiteDatabase db = this.getWritableDatabase();
+        ContentValues values = new ContentValues();
+        values.put(KEY_MAPNAME, trackMapName); // Name of map
+        values.put(KEY_DESC, trackDesc); // Track description
+        values.put(KEY_LINE_SEGMENTS, trackLineSegments); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
+        values.put(KEY_COLOR, trackColor); // Color name of pushpin image
+        values.put(KEY_TIME, trackTime); // Date and time of creation of track
+
+        // Update Row
+        db.update(TABLE_TRACKS, values,KEY_ID + " = ?",
+                new String[]{ String.valueOf(currentTrackId) });
+        //db.close(); // is this needed????????????????????????
+    }
     public long addTrack(Track track) throws SQLException {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
@@ -555,6 +584,8 @@ public class DBHandler extends SQLiteOpenHelper {
         values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
+        // save the line segments for MyGlobalLocationReceiver
+        this.trackLineSegments = track.getLineSegments();
         // Inserting Row
         return db.insert(TABLE_TRACKS, null, values);
     }
@@ -567,6 +598,10 @@ public class DBHandler extends SQLiteOpenHelper {
         values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
+        // save the variables for TrackingService to update tracks while in the background
+        this.trackDesc = track.getDesc();
+        this.trackColor = track.getColorName();
+        this.trackLineSegments = track.getLineSegments();
         // updating row
         return db.update(TABLE_TRACKS, values, KEY_ID + " = ?",
                 new String[]{ String.valueOf(track.getId()) });
@@ -592,7 +627,7 @@ public class DBHandler extends SQLiteOpenHelper {
     }
 
     // Get all tracks for a given map
-    public Tracks getTracks(String mapName) throws Exception {
+    public Tracks getTracks(String mapName) {
         SQLiteDatabase db = this.getWritableDatabase();
         Tracks trackList = new Tracks();
         // Select All Query
