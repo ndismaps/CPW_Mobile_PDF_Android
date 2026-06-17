@@ -2715,7 +2715,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                    kml.append("        <altitudeMode>clampToGround</altitudeMode>\n");
 
                    // Bind a single timestamp to the entire Placemark feature
-                   String timestamp = convertStringToKmlTimestamp(tracks.get(i).getTime(), "yyyy-MM-dd HH:mm:ss");
+                   String timestamp = convertStringToKmlTimestamp(tracks.get(i).getTime(), "MM/dd/yyyy hh:mm a");
                    kml.append("        <TimeStamp>\n");
                    kml.append("          <when>").append(timestamp).append("</when>\n");
                    kml.append("        </TimeStamp>\n");
@@ -2748,13 +2748,13 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         // Generate separate, individual Waypoint Placemarks
         for (int index = 0; index < wayPts.size(); index++) {
             kml.append("    <Placemark>\n");
-            kml.append("      <name>").append(wayPts.get(index).getName()).append("</name>\n");
+            kml.append("      <name>").append(wayPts.get(index).getDesc()).append("</name>\n");
             kml.append("      <Point>\n");
             // Bind a single timestamp to the entire Placemark feature
-            String timestamp = convertStringToKmlTimestamp(wayPts.get(index).getTime(),"yyyy-MM-dd HH:mm:ss");
-            kml.append("      <TimeStamp>\n");
-            kml.append("        <when>").append(timestamp).append("</when>\n");
-            kml.append("      </TimeStamp>\n");
+            String timestamp = convertStringToKmlTimestamp(wayPts.get(index).getTime(),"MM/dd/yyyy hh:mm a");
+            kml.append("        <TimeStamp>\n");
+            kml.append("          <when>").append(timestamp).append("</when>\n");
+            kml.append("        </TimeStamp>\n");
             kml.append("        <coordinates>")
                     .append(wayPts.get(index).getLong()).append(",")
                     .append(wayPts.get(index).getLat()).append(",")
@@ -2763,8 +2763,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             kml.append("      </Point>\n");
             kml.append("    </Placemark>\n");
         }
-
-
         kml.append("  </Document>\n");
         kml.append("</kml>");
 
