@@ -104,7 +104,8 @@ import java.util.zip.ZipOutputStream;
 /* show the map */
 public class PDFActivity extends AppCompatActivity implements SensorEventListener {
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // for database calls
-    boolean debug = false;
+    boolean debug = false; // to change long lat enter this in the Windows Powershell
+    // C:\Users\tbearly\AppData\Local\Android\Sdk\platform-tools\adb.exe emu geo fix -105.054883 40.4219
     PDFView pdfView;
     ArrayList<PDFMap> maps;
     PDFMap myMap;
@@ -754,7 +755,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //
                     if (tracks != null && tracks.size()>0 && clickedTrack != -1 && clickedTrack < tracks.size()) {
                         Boolean continueProcessing;
-                        continueProcessing = checkForWaypointButtonClick(boxWidth, x, y, clickTrackX, clickTrackY, clickedTrack);
+                        // convert lat, long to screen coordinates
+                        float screenX = (float) ((((clickTrackX - long1) / longDiff) * ((optimalPageWidth.get() * zoom) - marginx)) + marginL);
+                        float screenY = (float) ((((lat2 - clickTrackY) / latDiff) * ((optimalPageHeight.get() * zoom) - marginy)) + marginT);
+                        continueProcessing = checkForWaypointButtonClick(boxWidth, x, y, screenX, screenY, clickedTrack);
                         if (!continueProcessing) return false;
                     }
 
@@ -804,8 +808,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     // If clicked on a track show balloon
                     if (tracks != null && tracks.size()>0) {
                         clickedTrack = -1; // tracks index
-                        clickTrackX = -1;
-                        clickTrackY = -1;
+                        clickTrackX = -1.0f;
+                        clickTrackY = -1.0f;
                         for (var t = 0; t < tracks.size(); t++) {
                             Track track = tracks.get(t);
 
@@ -819,13 +823,18 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                             segment.getX2(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
                                             segment.getY2(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()));
                                     dist = (float) Math.sqrt(dist); // square root
-                                    if (dist < 100)
-                                        Log.d("DEBUG", "distance squared " + dist + " zoom=" + zoom);
-                                    if (dist < 100) {
+                                    Log.d("distance", "distance squared " + dist + " zoom=" + zoom);
+                                    int checkDistance = 100;
+                                    if (zoom >= 5) checkDistance = 300;
+                                    if (dist < checkDistance) {
                                         // show popup for track
                                         clickedTrack = t; // tracks index
-                                        clickTrackX = x;
-                                        clickTrackY = y;
+                                        // convert lat, long to screen coordinates
+
+                                        float longitudeX = (float) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
+                                        float latitudeY = (float) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
+                                        clickTrackX = longitudeX;
+                                        clickTrackY = latitudeY;
                                         break;
                                     }
                                 }
@@ -1153,7 +1162,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     if (tracks != null && tracks.size()>0 && (clickTrackX != -1) && showTracks && clickedTrack != -1 && clickedTrack < tracks.size()) {
                         //Log.d("PDFActivity", "onDraw: draw track and popup balloon. newWP="+newWP+" clickedWP="+clickedWP);
                         String desc = tracks.get(clickedTrack).getDesc();
-                        drawPopup(canvas, clickTrackX, clickTrackY, boxWidth, desc);
+                        // convert lat (clickTrackY), long (clickTrackX) to screen coordinates, handling zoom
+                        float x = (float) (((clickTrackX - long1) / longDiff) * (((optimalPageWidth.get() * zoom) - marginx)) + marginL);
+                        float y = (float) (((lat2 - clickTrackY) / latDiff) * (((optimalPageHeight.get() * zoom) - marginy)) + marginT);
+                        drawPopup(canvas, x, y, boxWidth, desc);
                     }
 
                     //-----------------------
@@ -2694,42 +2706,43 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
         // Add Track Placemarks
         if (tracks != null && tracks.size() > 0) {
-            for (int i=0; i<tracks.size(); i++) {
-                kml.append("    <Placemark>\n");
-                kml.append("      <name>Styled Activity Route</name>\n");
-                kml.append("      <styleUrl>#").append(tracks.get(i).getColorName()).append("</styleUrl>\n"); // Link to style id above
-                kml.append("      <gx:Track>\n");
-                kml.append("        <altitudeMode>clampToGround</altitudeMode>\n");
+           for (int i = 0; i < tracks.size(); i++) {
+               if (tracks.get(i).getTrackSegments().size() > 2) {
+                   kml.append("    <Placemark>\n");
+                   kml.append("      <name>").append(tracks.get(i).getDesc()).append("</name>\n");
+                   kml.append("      <styleUrl>#").append(tracks.get(i).getColorName()).append("</styleUrl>\n"); // Link to style id above
+                   kml.append("      <gx:Track>\n");
+                   kml.append("        <altitudeMode>clampToGround</altitudeMode>\n");
 
-                // Bind a single timestamp to the entire Placemark feature
-                String timestamp = convertStringToKmlTimestamp(tracks.get(i).getTime(),"yyyy-MM-dd HH:mm:ss");
-                kml.append("      <TimeStamp>\n");
-                kml.append("        <when>").append(timestamp).append("</when>\n");
-                kml.append("      </TimeStamp>\n");
+                   // Bind a single timestamp to the entire Placemark feature
+                   String timestamp = convertStringToKmlTimestamp(tracks.get(i).getTime(), "yyyy-MM-dd HH:mm:ss");
+                   kml.append("        <TimeStamp>\n");
+                   kml.append("          <when>").append(timestamp).append("</when>\n");
+                   kml.append("        </TimeStamp>\n");
 
-                // Loop 2: Output matching space-separated coordinates (lon lat alt)
-                for (var j=0; j<tracks.get(i).getTrackSegments().size(); j++) {
-                    // trackSegments = x1,y1,x2,y2
-                    TrackSegment segment = tracks.get(i).getTrackSegments().get(j);
-                    // hardcode altitude as 0 for 2D maps
-                    if (j == 0) {
-                        kml.append("        <gx:coord>")
-                                .append(segment.getX1()).append(" ")
-                                .append(segment.getY1()).append(" ")
-                                .append(0)
-                                .append("</gx:coord>\n");
-                    }else {
-                        kml.append("        <gx:coord>")
-                                .append(segment.getX2()).append(" ")
-                                .append(segment.getY2()).append(" ")
-                                .append(0)
-                                .append("</gx:coord>\n");
-                    }
-                }
-            }
-
-            kml.append("      </gx:Track>\n");
-            kml.append("    </Placemark>\n");
+                   // Loop 2: Output matching space-separated coordinates (lon lat alt)
+                   for (var j = 0; j < tracks.get(i).getTrackSegments().size(); j++) {
+                       // trackSegments = x1,y1,x2,y2
+                       TrackSegment segment = tracks.get(i).getTrackSegments().get(j);
+                       // hardcode altitude as 0 for 2D maps
+                       if (j == 0) {
+                           kml.append("        <gx:coord>")
+                                   .append(segment.getX1()).append(" ")
+                                   .append(segment.getY1()).append(" ")
+                                   .append(0)
+                                   .append("</gx:coord>\n");
+                       } else {
+                           kml.append("        <gx:coord>")
+                                   .append(segment.getX2()).append(" ")
+                                   .append(segment.getY2()).append(" ")
+                                   .append(0)
+                                   .append("</gx:coord>\n");
+                       }
+                   }
+                   kml.append("      </gx:Track>\n");
+                   kml.append("    </Placemark>\n");
+               }
+           }
         }
 
         // Generate separate, individual Waypoint Placemarks
@@ -2743,8 +2756,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             kml.append("        <when>").append(timestamp).append("</when>\n");
             kml.append("      </TimeStamp>\n");
             kml.append("        <coordinates>")
-                    .append(wayPts.get(index).getLat()).append(",")
                     .append(wayPts.get(index).getLong()).append(",")
+                    .append(wayPts.get(index).getLat()).append(",")
                     .append(0)
                     .append("</coordinates>\n");
             kml.append("      </Point>\n");
@@ -2914,7 +2927,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         dbExecutor.execute(() -> {
             DBHandler db = DBHandler.getInstance(PDFActivity.this);
             long newId = db.addTrack(tracks.get(currentTrackID));
-            db.initTrack(mapName, "Track "+num, "cyan", tracks.get(currentTrackID).getTime());
             // Switch to main thread to push the data to your UI
             runOnUiThread(() -> {
                 tracks.get(currentTrackID).setId(newId);
@@ -2923,16 +2935,16 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 showTracks = true;
                 action_showTracks.setChecked(true);
                 trackMenuItem.setIcon(R.drawable.ic_cyan_track);
+                // start recording tracks to the database calls TrackingService
+                Intent intent = new Intent(this, TrackingService.class);
+                intent.setAction(TrackingService.ACTION_TOGGLE_RECORDING);
+                intent.putExtra(TrackingService.EXTRA_IS_RECORDING, true);
+                intent.putExtra(TrackingService.EXTRA_CURRENT_TRACK_ID, currentTrackID);
+                intent.putExtra(TrackingService.EXTRA_CURRENT_DB_ID, newId);
+                startService(intent);
                 Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOn), Toast.LENGTH_LONG).show();
             });
         });
-        // start recording tracks to the database calls TrackingService
-
-        Intent intent = new Intent(this, TrackingService.class);
-        intent.setAction(TrackingService.ACTION_TOGGLE_RECORDING);
-        intent.putExtra(TrackingService.EXTRA_IS_RECORDING, true);
-        intent.putExtra(TrackingService.EXTRA_CURRENT_TRACK_ID, currentTrackID);
-        startService(intent);
     }
     // Turn tracking off
     private void turnTrackingOff(){
@@ -2946,7 +2958,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         Intent intent = new Intent(this, TrackingService.class);
         intent.setAction(TrackingService.ACTION_TOGGLE_RECORDING);
         intent.putExtra(TrackingService.EXTRA_IS_RECORDING, false);
-        intent.putExtra(TrackingService.EXTRA_CURRENT_TRACK_ID, currentTrackID);
+        intent.putExtra(TrackingService.EXTRA_CURRENT_TRACK_ID, -1);
+        intent.putExtra(TrackingService.EXTRA_CURRENT_DB_ID, -1);
         startService(intent);
     }
     // ADJUST WAYPOINT MENU

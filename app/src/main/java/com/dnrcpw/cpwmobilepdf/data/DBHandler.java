@@ -17,7 +17,10 @@ import com.dnrcpw.cpwmobilepdf.model.WayPt;
 import com.dnrcpw.cpwmobilepdf.model.WayPts;
 
 import java.io.File;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Locale;
 
 /**
@@ -57,7 +60,7 @@ public class DBHandler extends SQLiteOpenHelper {
     // Tracks Table Columns names
     private static final String KEY_MAPNAME = "mapname";
     private static final String KEY_DESC = "descrption";
-    private static final String KEY_LINE_SEGMENTS = "linesegments"; // comma delimited x,y pairs
+    private static final String KEY_LINE_SEGMENTS = "linesegments"; // comma delimited x,y pairs of long, lat
     private static final String KEY_COLOR = "color";
     private static final String KEY_TIME = "time";
 
@@ -67,6 +70,7 @@ public class DBHandler extends SQLiteOpenHelper {
     private static final String KEY_X = "x";
     private static final String KEY_Y = "y";
     private static final String KEY_LOCATION = "location";
+
 
     public static synchronized DBHandler getInstance(Context context) throws SQLException {
         // 5-18-26 Add sInstance
@@ -373,7 +377,7 @@ public class DBHandler extends SQLiteOpenHelper {
         values.put(KEY_LOAD_ADJ_MAPS, "1");
         values.put(KEY_SHOW_WAYPOINTS, "1");
         values.put(KEY_SHOW_ALL_WAYPOINT_LABELS, "0");
-        values.put(KEY_SHOW_TRACKS, "0");
+        values.put(KEY_SHOW_TRACKS, "1");
         db1.insert(TABLE_SETTINGS, null, values);
     }
 
@@ -389,7 +393,7 @@ public class DBHandler extends SQLiteOpenHelper {
     }
     public int getLoadAdjMaps() throws SQLiteException {
         // Sets user preference, should load adjacent maps if current location goes off the map and onto another map?
-        // Displays a drop down menu of maps to choose from. This is a checkbox on the maps more menu
+        // Displays a dropdown menu of maps to choose from. This is a checkbox on the maps more menu
         SQLiteDatabase db = this.getWritableDatabase();
         int load_adj_maps;
         String selectQuery = "SELECT " + KEY_LOAD_ADJ_MAPS + " FROM " + TABLE_SETTINGS;
@@ -538,11 +542,6 @@ public class DBHandler extends SQLiteOpenHelper {
     //--------------------------
     // Tracks Table
     //--------------------------
-    String trackMapName = "";
-    String trackDesc = "";
-    String trackColor = "";
-    String trackTime = "";
-    String trackLineSegments = "";
     private void createTracksTable(SQLiteDatabase db1) throws SQLException {
         String CREATE_TRACKS_TABLE = "CREATE TABLE " + TABLE_TRACKS + "("
                 + KEY_ID + " INTEGER PRIMARY KEY, " + KEY_MAPNAME + " TEXT, "
@@ -550,42 +549,73 @@ public class DBHandler extends SQLiteOpenHelper {
                 + KEY_COLOR + " TEXT, " + KEY_TIME + " TEXT)";
         db1.execSQL(CREATE_TRACKS_TABLE);
     }
-    public void initTrack(String mapName, String desc, String color, String time){
-        // Save these when user starts a track, so that the background service, MyGlobalLocationReceiver can insert the new track
-        this.trackMapName = mapName;
-        this.trackDesc = desc;
-        this.trackColor = color;
-        this.trackTime = time;
-    }
 
-    public synchronized void updateTrack(double latitude, double longitude, int currentTrackId){
+    public synchronized void updateTrack(double latitude, double longitude, long currentDBId){
         // save the line segments when app is in the background and foreground
         // Called by TrackingService
-        if (!this.trackLineSegments.isEmpty()) trackLineSegments += ",";
-        this.trackLineSegments = trackLineSegments+longitude+","+latitude;
-        SQLiteDatabase db = this.getWritableDatabase();
-        ContentValues values = new ContentValues();
-        values.put(KEY_MAPNAME, trackMapName); // Name of map
-        values.put(KEY_DESC, trackDesc); // Track description
-        values.put(KEY_LINE_SEGMENTS, trackLineSegments); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
-        values.put(KEY_COLOR, trackColor); // Color name of pushpin image
-        values.put(KEY_TIME, trackTime); // Date and time of creation of track
+        String lineSegments = "";
 
-        // Update Row
+        SQLiteDatabase db = this.getWritableDatabase();
+        Cursor cursor = db.query(TABLE_TRACKS, new String[]{KEY_LINE_SEGMENTS}, KEY_ID + "=?",
+                new String[]{String.valueOf(currentDBId)}, null, null, null, null);
+        if (cursor != null) {
+            if (cursor.moveToFirst()) {
+                lineSegments = cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS));
+            }
+            cursor.close(); // Crucial to close cursor to avoid memory leaks
+        }
+        // Make sure they have moved
+        if (!lineSegments.isEmpty()) {
+            // Get the last lat long, then compare if distance is greater than 10 meters
+            int pos = lineSegments.lastIndexOf(",");
+            String str = lineSegments.substring(pos+1);
+            double lastLat = Double.parseDouble(str);
+            // remove last latitude
+            str = lineSegments.substring(0,pos);
+            pos = str.lastIndexOf(",");
+            double lastLong;
+            // test for only one point, no comma
+            if (pos == -1)
+                lastLong = Double.parseDouble(str);
+            else
+                lastLong = Double.parseDouble(str.substring(pos+1));
+            // If the distance has not changed more than 5 meters, don't record the track segment
+            Log.d("distance","distance between lat,long in m="+calculateDistance(lastLat,lastLong,latitude,longitude));
+            if (calculateDistance(lastLat,lastLong,latitude,longitude) < 5) return;
+        }
+        if (!lineSegments.isEmpty()) lineSegments += ",";
+        lineSegments = lineSegments+longitude+","+latitude;
+
+        ContentValues values = new ContentValues();
+        values.put(KEY_LINE_SEGMENTS, lineSegments); // String of x1,y1,x2,y2,x3,y3,... line segments in long, lat
+
+        // Update line segments
         db.update(TABLE_TRACKS, values,KEY_ID + " = ?",
-                new String[]{ String.valueOf(currentTrackId) });
+                new String[]{ String.valueOf(currentDBId) });
         //db.close(); // is this needed????????????????????????
+    }
+    public static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+        // returns the distance between 2 lat,long points in meters
+        double EARTH_RADIUS = 6371000;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return EARTH_RADIUS * c; // Returns distance in meters
     }
     public long addTrack(Track track) throws SQLException {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(KEY_MAPNAME, track.getMapName()); // Name of map
         values.put(KEY_DESC, track.getDesc()); // Track description
-        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
+        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in long, lat
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
-        // save the line segments for MyGlobalLocationReceiver
-        this.trackLineSegments = track.getLineSegments();
         // Inserting Row
         return db.insert(TABLE_TRACKS, null, values);
     }
@@ -595,13 +625,9 @@ public class DBHandler extends SQLiteOpenHelper {
         ContentValues values = new ContentValues();
         values.put(KEY_MAPNAME, track.getMapName()); // Name of map
         values.put(KEY_DESC, track.getDesc()); // Track description
-        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in lat, long
+        values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in long, lat
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
-        // save the variables for TrackingService to update tracks while in the background
-        this.trackDesc = track.getDesc();
-        this.trackColor = track.getColorName();
-        this.trackLineSegments = track.getLineSegments();
         // updating row
         return db.update(TABLE_TRACKS, values, KEY_ID + " = ?",
                 new String[]{ String.valueOf(track.getId()) });
@@ -638,10 +664,10 @@ public class DBHandler extends SQLiteOpenHelper {
         // looping through all rows and adding to list
         if (cursor.moveToFirst()) {
             do {
-                // Make sure this track has line segments
-                if (cursor.getString(3).isEmpty())
+                // Make sure this track has line segments and a mapName
+                if (cursor.getString(3).isEmpty() || cursor.getString(1).isEmpty())
                     deleteIds.add(cursor.getInt(0));
-                    // Adding track to list if matches name
+                // Adding track to list if matches name
                 else if (mapName.equals(cursor.getString(1))) {
                     trackList.add(Integer.parseInt(cursor.getString(0)), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4), cursor.getString(5));
                 }

@@ -16,7 +16,7 @@ import androidx.annotation.NonNull;import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.dnrcpw.cpwmobilepdf.data.DBHandler;
-import com.google.android.gms.location.FusedLocationProviderClient;
+import com.dnrcpw.cpwmobilepdf.model.Tracks;import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
@@ -36,15 +36,17 @@ public class TrackingService extends Service {
     public static final String ACTION_TOGGLE_RECORDING = "com.dnrcpw.cpwmobilepdf.TOGGLE_RECORDING";
     public static final String EXTRA_IS_RECORDING = "extra_is_recording";
     public static final String EXTRA_CURRENT_TRACK_ID = "extra_current_track_id";
+    public static final String EXTRA_CURRENT_DB_ID = "extra_current_db_id";
     private DBHandler dbHelper;
     // State flag controlling whether updates write to SQLite
     private boolean isRecordingTracks = false;
     private int currentTrackId = -1;
+    private long currentDBId = -1;
 
     @Override
     public void onCreate() {
         super.onCreate();
-        dbHelper = new DBHandler(getApplicationContext());
+        dbHelper = DBHandler.getInstance(getApplicationContext());
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         locationCallback = new LocationCallback() {
@@ -83,11 +85,11 @@ public class TrackingService extends Service {
                     sendBroadcast(intent);
 
                     // Conditionally save to SQLite database if recording is toggled on
-                    if (isRecordingTracks) {
+                    if (isRecordingTracks && currentDBId != -1) {
                         dbHelper.updateTrack(
                                 latitude,
                                 longitude,
-                                currentTrackId
+                                currentDBId
                         );
                     }
                 }
@@ -133,6 +135,7 @@ public class TrackingService extends Service {
             if (ACTION_TOGGLE_RECORDING.equals(intent.getAction())) {
                 isRecordingTracks = intent.getBooleanExtra(EXTRA_IS_RECORDING, false);
                 currentTrackId = intent.getIntExtra(EXTRA_CURRENT_TRACK_ID, -1);
+                currentDBId = intent.getLongExtra(EXTRA_CURRENT_DB_ID, -1);
                 updateNotificationText();
             } else {
             /*Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)

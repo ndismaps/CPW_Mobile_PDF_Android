@@ -52,8 +52,8 @@ android {
         applicationId 'com.dnrcpw.cpwmobilepdf'
         minSdkVersion 23
         targetSdkVersion 36
-        versionCode 74
-        versionName "1.9"
+        versionCode 75
+        versionName "1.9.1"
         // History
         // v1.3.01 Removed asynctask
         // v1.3.02 Adjust waypoint on long click, added edit, move, delete buttons to top menu
