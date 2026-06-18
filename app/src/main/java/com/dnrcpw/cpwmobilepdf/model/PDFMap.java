@@ -455,7 +455,7 @@ public class PDFMap {
             try {
                 // Save thumbnail image in local storage where this App is.
                 String path = c.getFilesDir().getAbsolutePath();
-                img = new File(path + "/CPWthumbnail" + pdfMap.getId() + ".png");
+                img = new File(path + "/CPWthumbnailLoading.png");
                 if (!img.exists()) {
                     boolean fileDoesNotExist = img.createNewFile();
                     if (!fileDoesNotExist)
@@ -464,7 +464,7 @@ public class PDFMap {
                 FileOutputStream fos = new FileOutputStream(img);
                 fos.write(thumbnail);
                 fos.close();
-                pdfMap.setThumbnail(path + "/CPWthumbnail" + pdfMap.getId() + ".png");
+                pdfMap.setThumbnail(path + "/CPWthumbnailLoading.png");
             } catch (IOException e){
                 Toast.makeText(c, c.getResources().getString(R.string.problemThumbnailDiskFull) + e.getMessage(), Toast.LENGTH_LONG).show();
                 pdfMap.setThumbnail(null);

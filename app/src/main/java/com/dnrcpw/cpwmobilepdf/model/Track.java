@@ -36,11 +36,11 @@ public class Track {
             this.trackSegments = null;
         }else {
             List<String> segments = Arrays.asList(trackSegments.split(","));
-            float x1 = Float.parseFloat(segments.get(0));
-            float y1 = Float.parseFloat(segments.get(1));
+            double x1 = Double.parseDouble(segments.get(0));
+            double y1 = Double.parseDouble(segments.get(1));
             for (int i = 2; i < segments.size(); i += 2) {
-                float x2 = Float.parseFloat(segments.get(i));
-                float y2 = Float.parseFloat(segments.get(i + 1));
+                double x2 = Double.parseDouble(segments.get(i));
+                double y2 = Double.parseDouble(segments.get(i + 1));
                 TrackSegment thisSegment = new TrackSegment(x1, y1, x2, y2);
                 x1 = x2;
                 y1 = y2;
@@ -65,7 +65,7 @@ public class Track {
         }
         return lineSegments;
     }
-    public void addTrackSegment(float x1, float y1, float x2, float y2){
+    public void addTrackSegment(double x1, double y1, double x2, double y2){
         TrackSegment trackSegment = new TrackSegment(x1,y1, x2, y2);
         this.trackSegments.add(trackSegment);
     }

@@ -42,6 +42,10 @@ public class TrackingService extends Service {
     private boolean isRecordingTracks = false;
     private int currentTrackId = -1;
     private long currentDBId = -1;
+    private double  latitude = -1.0;
+    private double  longitude = -1.0;
+    private double latitude_before = -1.0;
+    private double longitude_before = -1.0;
 
     @Override
     public void onCreate() {
@@ -58,8 +62,11 @@ public class TrackingService extends Service {
                 }
 
                 for (Location location : locationResult.getLocations()) {
-                    double latitude = location.getLatitude();
-                    double longitude = location.getLongitude();
+                    // Save this lat long for next time as lat long before
+                    latitude_before = latitude;
+                    longitude_before = longitude;
+                    latitude = location.getLatitude();
+                    longitude = location.getLongitude();
                     double altitude = location.hasAltitude() ? location.getAltitude() : -1.0;
                     float accuracy = location.getAccuracy(); // Get accuracy in meters
                     // Default to -1.0f if the location object does not contain a valid bearing
@@ -76,6 +83,8 @@ public class TrackingService extends Service {
                     Intent intent = new Intent("ACTION_LOCATION_UPDATE");
                     intent.putExtra("extra_latitude", latitude);
                     intent.putExtra("extra_longitude", longitude);
+                    intent.putExtra("extra_latitude_before", latitude_before);
+                    intent.putExtra("extra_longitude_before", longitude_before);
                     intent.putExtra("extra_altitude", altitude);
                     intent.putExtra("extra_accuracy", accuracy);
                     intent.putExtra("extra_bearing", bearing);
@@ -89,6 +98,8 @@ public class TrackingService extends Service {
                         dbHelper.updateTrack(
                                 latitude,
                                 longitude,
+                                latitude_before,
+                                longitude_before,
                                 currentDBId
                         );
                     }

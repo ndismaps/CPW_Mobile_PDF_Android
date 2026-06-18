@@ -194,8 +194,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     private int currentTrackID = -1;
     private int clickedWP; // index of waypoint that was clicked on
     private int clickedTrack; // index of track that was clicked on
-    private float clickTrackX;  // x,y in screen coordinates of track that was clicked on
-    private float clickTrackY;
+    private double clickTrackX;  // x in longitude, of track that was clicked on
+    private double clickTrackY; // y in latitude, track that was clicked on
     private int adjustWP; // index of waypoint that was clicked on to adjust location (move button clicked)
     private float adjustX; // XY screen coordinate of the adjust location icon (fixed place on screen, map moves behind it)
     private float adjustY; // XY screen coordinate
@@ -258,7 +258,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             isBound = true;
 
             // Now you can safely call any public method inside TrackingService!
-            updateUIWithServiceData();
+            //updateUIWithServiceData();
             currentTrackID = trackingService.getCurrentTrackId(); // needed if was in the background
         }
 
@@ -294,12 +294,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             ToastUtils.showExtendedToast(PDFActivity.this,"No GPS Service, cannot show you location.");
             return;
         }
-        distanceTextView = findViewById(R.id.distance_text_view); // display distance traveled on current track
+        //distanceTextView = findViewById(R.id.distance_text_view); // display distance traveled on current track
         wait = findViewById(R.id.loadingPanel);
         wait.setVisibility(View.VISIBLE);
-        latNow = -1;
-        latBefore = -1;
-        longBefore = -1;
+        latNow = -1.0;
+        latBefore = -1.0;
+        longBefore = -1.0;
         addWayPtFlag=false;
         addTrackFlag=false;
         menuBtn = findViewById(R.id.load_adjacent_maps); // adjacent map button
@@ -324,8 +324,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         clickedWP = -1; // index of waypoint that was clicked on
         lastClickedWP = -1;
         clickedTrack = -1; // index of track that was clicked on
-        clickTrackX = -1.0f; // x,y point of track that was clicked on
-        clickTrackY = -1.0f;
+        clickTrackX = -1.0; // x,y point of track that was clicked on
+        clickTrackY = -1.0;
         adjustWP = -1; // long press on pin to adjust location
         newWP = false; // if added a new waypoint show balloon too
         txtCol = new TextPaint(); // text color for waypoint balloon popup
@@ -486,8 +486,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 wayPts.SortPts();
                 clickedWP = -1; // hide balloon
                 clickedTrack = -1; // hide balloon for tracks
-                clickTrackX = -1.0f;
-                clickTrackY = -1.0f;
+                clickTrackX = -1.0;
+                clickTrackY = -1.0;
                 // set orientation for this map
                 portraitLocked = maps.get(id).getMapOrientation().equals("portrait");
                 landscapeLocked = maps.get(id).getMapOrientation().equals("landscape");
@@ -808,33 +808,39 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     // If clicked on a track show balloon
                     if (tracks != null && tracks.size()>0) {
                         clickedTrack = -1; // tracks index
-                        clickTrackX = -1.0f;
-                        clickTrackY = -1.0f;
+                        clickTrackX = -1.0;
+                        clickTrackY = -1.0;
+                        boolean tFound = false;
                         for (var t = 0; t < tracks.size(); t++) {
+                            if (tFound) break;
                             Track track = tracks.get(t);
 
                             for (var s = 0; s < tracks.get(t).getTrackSegments().size(); s++) {
                                 TrackSegment segment = track.getTrackSegments().get(s);
                                 if (segment != null) {
                                     // Check if clicked point is on the line segment using the distance of a point to a line
-                                    float dist = distToSegmentSquared(x, y,
+                                    double dist = distToSegmentSquared((double)x, (double)y,
                                             segment.getX1(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
                                             segment.getY1(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()),
                                             segment.getX2(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
                                             segment.getY2(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()));
-                                    dist = (float) Math.sqrt(dist); // square root
+                                    dist = (double) Math.sqrt(dist); // square root
                                     Log.d("distance", "distance squared " + dist + " zoom=" + zoom);
                                     int checkDistance = 100;
-                                    if (zoom >= 5) checkDistance = 300;
+                                    if (zoom <= 2) checkDistance = 100;
+                                    else if (zoom <= 3) checkDistance = 200;
+                                    else if (zoom <= 5) checkDistance = 300;
+                                    else if (zoom <= 7) checkDistance = 400;
+                                    else if (zoom <= 9) checkDistance = 500;
+                                    else if (zoom <= 10) checkDistance = 600;
+                                    else checkDistance = 800;
                                     if (dist < checkDistance) {
                                         // show popup for track
                                         clickedTrack = t; // tracks index
-                                        // convert lat, long to screen coordinates
-
-                                        float longitudeX = (float) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
-                                        float latitudeY = (float) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
-                                        clickTrackX = longitudeX;
-                                        clickTrackY = latitudeY;
+                                        // convert screen coordinates to lat, long
+                                        clickTrackX = (double) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
+                                        clickTrackY = (double) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
+                                        tFound = true;
                                         break;
                                     }
                                 }
@@ -1051,10 +1057,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                             // Draw all tracks
                             List<TrackSegment> segments = currentTrack.getTrackSegments();
                             for (int i = 0; i < currentTrack.getTrackSegments().size(); i++) {
-                                canvas.drawLine(segments.get(i).getX1(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
-                                        segments.get(i).getY1(zoom, marginy, marginT, lat2, latDiff, optimalPageHeight.get()),
-                                        segments.get(i).getX2(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
-                                        segments.get(i).getY2(zoom, marginy, marginT, lat2, latDiff, optimalPageHeight.get()), lineColor);
+                                canvas.drawLine((float)(segments.get(i).getX1(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get())),
+                                    (float)(segments.get(i).getY1(zoom, marginy, marginT, lat2, latDiff, optimalPageHeight.get())),
+                                    (float)(segments.get(i).getX2(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get())),
+                                    (float)(segments.get(i).getY2(zoom, marginy, marginT, lat2, latDiff, optimalPageHeight.get())), lineColor);
                             }
                         }
                     }
@@ -1159,7 +1165,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     }
 
                     // Draw popup if track was clicked on
-                    if (tracks != null && tracks.size()>0 && (clickTrackX != -1) && showTracks && clickedTrack != -1 && clickedTrack < tracks.size()) {
+                    if (tracks != null && tracks.size()>0 && (clickTrackX != -1.0) && showTracks && clickedTrack != -1 && clickedTrack < tracks.size()) {
                         //Log.d("PDFActivity", "onDraw: draw track and popup balloon. newWP="+newWP+" clickedWP="+clickedWP);
                         String desc = tracks.get(clickedTrack).getDesc();
                         // convert lat (clickTrackY), long (clickTrackX) to screen coordinates, handling zoom
@@ -1251,22 +1257,22 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     }*/
 
     // find distance from a point to a line, used to determine if click on a track
-    private float sqr(float x) { return x * x; }
-    private float dist_sq(float x1, float y1, float x2, float y2) {
+    private double sqr(double x) { return x * x; }
+    private double dist_sq(double x1, double y1, double x2, double y2) {
         // a^2 + b^2 = c^2 distance of a right angle triangle
         return sqr(x1 - x2) + sqr(y1 - y2); }
-    private float distToSegmentSquared(float ptX, float ptY, float x1, float y1, float x2, float y2) {
+    private double distToSegmentSquared(double ptX, double ptY, double x1, double y1, double x2, double y2) {
         // pass point x,y then line segment x1,y1 x2,y2
-        float line_dist = dist_sq(x1, y1, x2, y2);
+        double line_dist = dist_sq(x1, y1, x2, y2);
         if (line_dist == 0) return dist_sq(ptX, ptY, x1, y1); // x1,y1 = x2,y2
         // Consider the line extending the segment, parameterized as v + t (w - v).  where v=x1,y1 w=x2,y2
         // We find projection of point p onto the line.
         // It falls where t = [(p-v) . (w-v)] / |w-v|^2
         // We clamp t from [0,1] to handle points outside the segment vw.
-        float t = ((ptX - x1) * (x2 - x1) + (ptY - y1) * (y2 - y1)) / line_dist;
+        double t = ((ptX - x1) * (x2 - x1) + (ptY - y1) * (y2 - y1)) / line_dist;
         t = Math.max(0, Math.min(1, t));
-        float x = x1 + t * (x2 - x1);
-        float y = y1 + t * (y2 - y1);
+        double x = x1 + t * (x2 - x1);
+        double y = y1 + t * (y2 - y1);
         return dist_sq(ptX, ptY, x, y);
     }
 
@@ -1538,6 +1544,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             canvas.translate((x + (boxWidth / 2)) + offsetBox + 10, y + offsetYBox - startY - boxHt - 12);
             canvas.restore();
         }
+        pdfView.invalidate();
     }
     public void drawLabels(Canvas canvas, float x, float y, float boxWidth, String desc){
         // check if waypoint has scrolled off-screen
@@ -1724,8 +1731,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 clickedWP = -1; // hide balloon
                 lastClickedWP = -1;
                 clickedTrack = -1;
-                clickTrackX = -1.0f;
-                clickTrackY = -1.0f;
+                clickTrackX = -1.0;
+                clickTrackY = -1.0;
                 adjustWP = -1;
                 newWP = false;
                 adjacentMapsBtnShowing = false;
@@ -1808,26 +1815,29 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     }
 
     //  LOCATION UPDATES
-    private void updateUIWithServiceData() {
+    /*private void updateUIWithServiceData() {
         // update tracking distance for current track
         if (isBound && trackingService != null) {
             float distance = trackingService.getTotalDistance();
             String txt = "Distance traveled: " + distance + "m";
             distanceTextView.setText(txt);
         }
-    }
+    }*/
 
     // Update Location
     private class LocationUpdateReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent != null && "ACTION_LOCATION_UPDATE".equals(intent.getAction())) {
-                // save last location so we can see how much they moved
-                latBefore = latNow;
-                longBefore = longNow;
+
+                //latBefore = latNow;
+                //longBefore = longNow;
 
                 latNow = intent.getDoubleExtra("extra_latitude", 0.0);
                 longNow = intent.getDoubleExtra("extra_longitude", 0.0);
+                // save last location so we can see how much they moved
+                longBefore = intent.getDoubleExtra("extra_longitude_before", -1.0);
+                latBefore = intent.getDoubleExtra("extra_latitude_before", -1.0);
                 accuracy = intent.getFloatExtra("extra_accuracy", 0.0f);
 
                 // **Debug** make it simulate user movement to draw a track

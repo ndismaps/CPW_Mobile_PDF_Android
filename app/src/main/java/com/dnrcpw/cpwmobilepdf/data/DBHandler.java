@@ -550,7 +550,7 @@ public class DBHandler extends SQLiteOpenHelper {
         db1.execSQL(CREATE_TRACKS_TABLE);
     }
 
-    public synchronized void updateTrack(double latitude, double longitude, long currentDBId){
+    public synchronized void updateTrack(double latitude, double longitude, double latitude_before, double longitude_before, long currentDBId){
         // save the line segments when app is in the background and foreground
         // Called by TrackingService
         String lineSegments = "";
@@ -566,22 +566,25 @@ public class DBHandler extends SQLiteOpenHelper {
         }
         // Make sure they have moved
         if (!lineSegments.isEmpty()) {
-            // Get the last lat long, then compare if distance is greater than 10 meters
-            int pos = lineSegments.lastIndexOf(",");
-            String str = lineSegments.substring(pos+1);
-            double lastLat = Double.parseDouble(str);
-            // remove last latitude
-            str = lineSegments.substring(0,pos);
-            pos = str.lastIndexOf(",");
-            double lastLong;
-            // test for only one point, no comma
-            if (pos == -1)
-                lastLong = Double.parseDouble(str);
-            else
-                lastLong = Double.parseDouble(str.substring(pos+1));
-            // If the distance has not changed more than 5 meters, don't record the track segment
-            Log.d("distance","distance between lat,long in m="+calculateDistance(lastLat,lastLong,latitude,longitude));
-            if (calculateDistance(lastLat,lastLong,latitude,longitude) < 5) return;
+            // Get the last lat long, then compare if distance is greater than 3 meters
+            if (latitude_before != -1.0 && longitude_before != -1.0) {
+                /*int pos = lineSegments.lastIndexOf(",");
+                String str = lineSegments.substring(pos + 1);
+                double lastLat = Double.parseDouble(str);
+                // remove last latitude
+                str = lineSegments.substring(0, pos);
+                pos = str.lastIndexOf(",");
+                double lastLong;
+                // test for only one point, no comma
+                if (pos == -1)
+                    lastLong = Double.parseDouble(str);
+                else
+                    lastLong = Double.parseDouble(str.substring(pos + 1));
+                */
+                // If the distance has not changed more than 3 meters, don't record the track segment
+                Log.d("distance", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, latitude, longitude));
+                if (calculateDistance(latitude_before, longitude_before, latitude, longitude) < 3) return;
+            }
         }
         if (!lineSegments.isEmpty()) lineSegments += ",";
         lineSegments = lineSegments+longitude+","+latitude;

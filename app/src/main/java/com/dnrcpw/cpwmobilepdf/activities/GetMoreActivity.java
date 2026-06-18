@@ -156,6 +156,13 @@ public class GetMoreActivity extends AppCompatActivity {
                     dbExecutor.execute(() -> {
                         Integer index = DBHandler.getInstance(GetMoreActivity.this).addMap(map2);
                         map2.setId(index);
+                        // rename thumbnail
+                        String path = GetMoreActivity.this.getFilesDir().getAbsolutePath();
+                        File img = new File(path + "/CPWthumbnailLoading.png");
+                        File imgNew = new File(path + "/CPWthumbnail"+index+".png");
+                        img.renameTo(imgNew);
+
+                        map2.setThumbnail(path+"/CPWthumbnail"+index+".png");
                         DBHandler.getInstance(GetMoreActivity.this).updateMap(map2);
                     });
 

@@ -52,8 +52,8 @@ android {
         applicationId 'com.dnrcpw.cpwmobilepdf'
         minSdkVersion 23
         targetSdkVersion 36
-        versionCode 75
-        versionName "1.9.1"
+        versionCode 76
+        versionName "1.9.2"
         // History
         // v1.3.01 Removed asynctask
         // v1.3.02 Adjust waypoint on long click, added edit, move, delete buttons to top menu
@@ -111,6 +111,7 @@ android {
         // v 1.5.10 4/2/26 add tracking, show all waypoints now shows only labels, update to sdk 36
         // v 1.6.7 5/26/26 add tracking service that runs in background, combine all databases into one, download kmz file
         // v 1.9 6/5/26 Add more permissions, only ask for background permissions if user clicks on add track icon.
+        // v 1.9.2 6/18/26 save kmz file of tracks and waypoints bug fixes, fine tune click on track, thumbnails were overwritten, save lat, long track segments as double not float,
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         /* to use Java 8 Lambda expressions. This overrides Gradle Settings for JDK */
