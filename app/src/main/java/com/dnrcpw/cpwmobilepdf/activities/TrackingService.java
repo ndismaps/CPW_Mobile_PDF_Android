@@ -30,8 +30,9 @@ public class TrackingService extends Service {
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
     // Global tracker configuration (Default values)
-    private long currentIntervalMillis = 15000; // 15 seconds for initial call
-    private long currentFastestIntervalMillis = 7000; // 7 seconds
+    private static boolean firstTime = true;
+    private long currentIntervalMillis = 1000; // 15 seconds for initial call
+    private long currentFastestIntervalMillis = 500; // 7 seconds
     private boolean isAutoAdjustEnabled = true; // Toggle for speed-based adjustment
     private float lastSpeedMps = 0.0f;
     // used to write track data to the database
@@ -65,8 +66,12 @@ public class TrackingService extends Service {
                 }
 
                 for (Location location : locationResult.getLocations()) {
-
-
+                    // first time it is called use 1 second interval, then reset to walking speed and let it auto adjust
+                    if (firstTime){
+                        firstTime = false;
+                        currentIntervalMillis = 15000;
+                        currentFastestIntervalMillis = 7000;
+                    }
                     // **Debug** make it simulate user movement to draw a track
                     if (debug && latitude_before != -1){
                         Random rand = new Random();
@@ -140,6 +145,11 @@ public class TrackingService extends Service {
         };
     }
 
+    public static void resetIntervalTo1Second(){
+        firstTime = true;
+        //changeLocationInterval(1000,500);
+    }
+
     public static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
         // returns the distance between 2 lat,long points in meters
         double EARTH_RADIUS = 6371000;
@@ -157,7 +167,7 @@ public class TrackingService extends Service {
 
     // Example public method your second activity might want to call
     public float getTotalDistance() {
-        // Assuming you track totalDistanceTraveled globally here
+        // TODO  Assuming you track totalDistanceTraveled globally here
         return 1500.5f;
     }
     public int getCurrentTrackId(){

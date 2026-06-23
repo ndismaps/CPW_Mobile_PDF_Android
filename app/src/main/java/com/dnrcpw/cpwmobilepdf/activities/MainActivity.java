@@ -33,6 +33,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -186,7 +187,9 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 != PackageManager.PERMISSION_GRANTED) {
 
             // Request Foreground & Background Location
-            showLocationRationaleDialog();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                showLocationRationaleDialog();
+            }
         } else {
             // Permission already granted, start location services
             startTrackingService();
@@ -234,17 +237,19 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
     }
      private void handleExemptionDenied(){
-         new AlertDialog.Builder(this)
-                 .setTitle("Warning")
-                 .setMessage("The app will not work without location permissions. Please select 'Allow all the time' or 'Allow only while using the app'. Selecting 'Ask every time' will not work.")
-                 .setPositiveButton("Continue", (dialog, which) -> showLocationRationaleDialog())
-                 .setNegativeButton("Exit App",  (dialog, which) -> {
-                     dialog.dismiss();
-                     // Close the app
-                     System.exit(1);
-                 })
-                 .setCancelable(false) // Prevents closing the dialog by clicking outside
-                 .show();
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+             new AlertDialog.Builder(this)
+                     .setTitle("Warning")
+                     .setMessage("The app will not work without location permissions. Please select 'Allow all the time' or 'Allow only while using the app'. Selecting 'Ask every time' will not work.")
+                     .setPositiveButton("Continue", (dialog, which) -> showLocationRationaleDialog())
+                     .setNegativeButton("Exit App",  (dialog, which) -> {
+                         dialog.dismiss();
+                         // Close the app
+                         System.exit(1);
+                     })
+                     .setCancelable(false) // Prevents closing the dialog by clicking outside
+                     .show();
+         }
      }
 
     // 2. Validate background state sequentially
@@ -262,6 +267,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
     }*/
 
+    @RequiresApi(api = Build.VERSION_CODES.Q)
     private void showLocationRationaleDialog() {
         new AlertDialog.Builder(this)
                 .setTitle("Allow Location Access")
@@ -274,7 +280,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                         intent.setData(uri);
                         //startActivity(intent);
                         locationSettingsLauncher.launch(intent); // use this instead so we can run code after it returns
-                    } else {
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q){
                         // Android 10 supports a targeted system dialog popup
                         ActivityCompat.requestPermissions(MainActivity.this,
                                 new String[]{
@@ -533,6 +539,9 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     protected void onResume() {
         super.onResume();
         try {
+            // Show distance to map in 1 second instead of 15 seconds TODO only working on the first time, not when return from a map!!!!!!!!!!
+            TrackingService.resetIntervalTo1Second();
+
             // Importing a Map hides this button, show it again
             FloatingActionButton fab = findViewById(R.id.fab);
             fab.setVisibility(View.VISIBLE);
@@ -916,6 +925,8 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             default:
                 Toast.makeText(getApplicationContext(), "Sort method not found: "+sortBy, Toast.LENGTH_LONG).show();
         }
+        // Instantly jumps to the first item
+        lv.setSelection(0);
     }
     @Override
     public void onItemSelected(AdapterView<?> parent, View v, int position, long id) throws IllegalStateException {
