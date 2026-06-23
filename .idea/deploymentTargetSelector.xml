@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="CPW_Mobile_PDF_Android.CPWMobilePDF.app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-06-18T20:05:39.465425500Z">
+        <DropdownSelection timestamp="2026-06-23T03:22:16.152517100Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="Default" identifier="serial=192.168.12.137:45237;connection=e696f51f" />
+              <DeviceId pluginId="Default" identifier="serial=192.168.12.137:33693;connection=7066b957" />
             </handle>
           </Target>
         </DropdownSelection>

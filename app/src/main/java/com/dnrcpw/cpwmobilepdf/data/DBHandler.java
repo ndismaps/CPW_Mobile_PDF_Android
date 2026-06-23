@@ -7,6 +7,7 @@ import android.database.SQLException;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteException;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.os.Build;
 import android.util.Log;
 
 import com.dnrcpw.cpwmobilepdf.R;
@@ -564,28 +565,6 @@ public class DBHandler extends SQLiteOpenHelper {
             }
             cursor.close(); // Crucial to close cursor to avoid memory leaks
         }
-        // Make sure they have moved
-        if (!lineSegments.isEmpty()) {
-            // Get the last lat long, then compare if distance is greater than 3 meters
-            if (latitude_before != -1.0 && longitude_before != -1.0) {
-                /*int pos = lineSegments.lastIndexOf(",");
-                String str = lineSegments.substring(pos + 1);
-                double lastLat = Double.parseDouble(str);
-                // remove last latitude
-                str = lineSegments.substring(0, pos);
-                pos = str.lastIndexOf(",");
-                double lastLong;
-                // test for only one point, no comma
-                if (pos == -1)
-                    lastLong = Double.parseDouble(str);
-                else
-                    lastLong = Double.parseDouble(str.substring(pos + 1));
-                */
-                // If the distance has not changed more than 3 meters, don't record the track segment
-                Log.d("distance", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, latitude, longitude));
-                if (calculateDistance(latitude_before, longitude_before, latitude, longitude) < 3) return;
-            }
-        }
         if (!lineSegments.isEmpty()) lineSegments += ",";
         lineSegments = lineSegments+longitude+","+latitude;
 
@@ -597,20 +576,7 @@ public class DBHandler extends SQLiteOpenHelper {
                 new String[]{ String.valueOf(currentDBId) });
         //db.close(); // is this needed????????????????????????
     }
-    public static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-        // returns the distance between 2 lat,long points in meters
-        double EARTH_RADIUS = 6371000;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
 
-        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
-                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-        return EARTH_RADIUS * c; // Returns distance in meters
-    }
     public long addTrack(Track track) throws SQLException {
         SQLiteDatabase db = this.getWritableDatabase();
         ContentValues values = new ContentValues();
@@ -667,8 +633,23 @@ public class DBHandler extends SQLiteOpenHelper {
         // looping through all rows and adding to list
         if (cursor.moveToFirst()) {
             do {
-                // Make sure this track has line segments and a mapName
-                if (cursor.getString(3).isEmpty() || cursor.getString(1).isEmpty())
+                // Make sure this track has at least 2 line segments and a mapName
+                // count number of commas. A point has 1.
+                long count = 0;
+                if (!cursor.getString(3).isEmpty()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        count = cursor.getString(3).chars()
+                                .filter(ch -> ch == ',')
+                                .count();
+                    } else {
+                        int index = 0;
+                        index = cursor.getString(3).indexOf(",", index);
+                        if (index != -1) count++;
+                        index = cursor.getString(3).indexOf(",", index + 1);
+                        if (index != -1) count++;
+                    }
+                }
+                if (count == 1 || cursor.getString(3).isEmpty() || cursor.getString(1).isEmpty())
                     deleteIds.add(cursor.getInt(0));
                 // Adding track to list if matches name
                 else if (mapName.equals(cursor.getString(1))) {

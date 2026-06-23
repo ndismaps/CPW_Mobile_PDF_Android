@@ -101,10 +101,20 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+// upload a kmz file
+import java.io.BufferedInputStream;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Document;
+
 /* show the map */
 public class PDFActivity extends AppCompatActivity implements SensorEventListener {
     private final ExecutorService dbExecutor = Executors.newSingleThreadExecutor(); // for database calls
-    boolean debug = false; // to change long lat enter this in the Windows Powershell
+    //boolean debug = false; // to change long lat enter this in the Windows Powershell
     // C:\Users\tbearly\AppData\Local\Android\Sdk\platform-tools\adb.exe emu geo fix -105.054883 40.4219
     PDFView pdfView;
     ArrayList<PDFMap> maps;
@@ -464,6 +474,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
     private void loadNewMap(ArrayList<PDFMap> maps, int id){
         if (id > maps.size()-1)return;
+        // if tracking stop it and then restart with new maps name
+        turnTrackingOff();
         path = maps.get(id).getPath();
         mapName = maps.get(id).getName();
         PDFActivity.this.setTitle(mapName);
@@ -488,6 +500,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 clickedTrack = -1; // hide balloon for tracks
                 clickTrackX = -1.0;
                 clickTrackY = -1.0;
+                turnTrackingOn();
                 // set orientation for this map
                 portraitLocked = maps.get(id).getMapOrientation().equals("portrait");
                 landscapeLocked = maps.get(id).getMapOrientation().equals("landscape");
@@ -1099,7 +1112,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         }
                     }
                     // Draw Waypoints
-                    if (showAllWayPts) {
+                    if (showAllWayPts && wayPts != null) {
                         for (int i12 = 0; i12 < wayPts.size(); i12++) {
                             //Log.d("PDFActivity","drawing waypoint "+i12);
                             double xLong = wayPts.get(i12).getX();
@@ -1840,25 +1853,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 latBefore = intent.getDoubleExtra("extra_latitude_before", -1.0);
                 accuracy = intent.getFloatExtra("extra_accuracy", 0.0f);
 
-                // **Debug** make it simulate user movement to draw a track
-                if (debug && latBefore != -1){
-                    Random rand = new Random();
-                    int randomInt = 1;
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                        randomInt = rand.nextInt(1,9);
-                    }
-                    if (randomInt > 7) randomInt = randomInt * -1;
-                    double r = (double)randomInt / 10000.0;
-                    latNow =  latBefore + r;
-                    randomInt = 1;
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                        randomInt = rand.nextInt(1,9);
-                    }
-                    if (randomInt > 7) randomInt = randomInt * -1;
-                    r = (double)randomInt / 10000.0;
-                    longNow = longBefore + r;
-                }
-
                 // Add to the current track's path with current location if on map
                 if (latBefore != -1 && currentTrackID != -1 &&
                         (latNow >= lat1 && latNow <= lat2) &&
@@ -1866,6 +1860,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
                     // Update display
                     Track currentTrack = tracks.get(currentTrackID);
+                    Log.d("TrackingService","currentTrackID="+currentTrackID+" "+longBefore+" "+latBefore+" "+longNow+" "+latNow);
                     currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
                     // Save new line segment in database
                     // Handled in TrackingService onLocationResult
@@ -1893,10 +1888,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 //bTxt.setText(Float.toString(bearing)+"  adjust: "+Float.toString((geoField.getDeclination()))+ "  bear: "+Float.toString(location.getBearing()));
 
                 pdfView.invalidate();
-                //
-                // Load Adjacent Maps?
-                // check if we need to display load adjacent maps button because current location is within 1/4 mile of other maps
-                //
 
                 // OLD WAY when current location goes off edge. Problem USGS and FS maps have a margin CPW maps do not. Show when close to edge.
                 //double percentX = 0.13;
@@ -1910,6 +1901,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 //longNow = long1 + longDiff*percentX;
                 //if (loadAdjacentMaps && onMap && (latNow < (lat1 + latDiff*percentX)  || latNow > (lat2 - latDiff*percentX)  || longNow < (long1 + longDiff*percentY) || longNow > (long2 - longDiff*percentY))){
 
+                //
+                // Load Adjacent Maps?
+                // check if we need to display load adjacent maps button because current location is within 1/4 mile of other maps
+                //
                 double quarterMileInDegrees = 0.00458; // 1 degree = 54.6 miles
                 if (loadAdjacentMaps &&
                         latNow > (lat1 - quarterMileInDegrees) &&
@@ -2262,7 +2257,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 Toast.makeText(PDFActivity.this,"Problem deleting tracks in "+mapName, Toast.LENGTH_LONG).show();
             }
         }
-        // Download KMZ file of all tracks in this map
+        // Download KMZ file of all tracks and waypoints in this map
         else if (id == R.id.action_downloadKMZTracks){
             // Generate: kml string
             String kmlContent = generateStyledTrackKml();
@@ -2278,6 +2273,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 fileName = fileName + formatter.format(legacyDate);
             }
             exportKmzToDownloads(PDFActivity.this, fileName, kmlContent);
+        }
+        // Upload KMZ file of all tracks and waypoints in this map
+        else if (id == R.id.action_uploadKMZTracks){
+
         }
         // All Waypoint Labels
         else if (id == R.id.action_showAll){
@@ -2532,11 +2531,11 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             }
             });
         }
-        else if (id == R.id.action_tracking_settings) {
+        /*else if (id == R.id.action_tracking_settings) {
             // Trigger our floating drop-down menu panel
             showTrackingConfigurationPanel();
             return true;
-        }
+        }*/
         else if (id == R.id.action_help){
             Intent i = new Intent(PDFActivity.this, PDFHelpActivity.class);
             startActivity(i);
@@ -2680,6 +2679,51 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 .setCancelable(false) // Prevents closing the dialog by clicking outside
                 .show();
     }
+
+    //
+    // KMZ Files
+    //
+     // Upload a kmz file
+    public void KmzReader() {
+        //public static void main(String[] args) {
+        //File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+
+        // Use file picker TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            String kmzFilePath = "path/to/your/file.kmz";
+
+            try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(kmzFilePath)))) {
+                ZipEntry entry;
+
+                // Iterate through the files inside the KMZ archive
+                while ((entry = zis.getNextEntry()) != null) {
+                    // Look for the main KML file (usually ends with .kml)
+                    if (entry.getName().toLowerCase().endsWith(".kml")) {
+                        System.out.println("Found KML file: " + entry.getName());
+
+                        // Parse the KML input stream using Java's built-in DOM parser
+                        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                        factory.setNamespaceAware(true);
+                        DocumentBuilder builder = factory.newDocumentBuilder();
+
+                        // Pass the active ZipInputStream directly into the parser
+                        Document doc = builder.parse(zis);
+                        doc.getDocumentElement().normalize();
+
+                        // Print out the root XML tag to verify success
+                        System.out.println("Root element: " + doc.getDocumentElement().getNodeName());
+
+                        // Close the current zip entry tracking
+                        zis.closeEntry();
+                        break;
+                    }
+                    zis.closeEntry();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+       // }
+    }
+
     // Write waypoints and tracks to KML format
     private String generateStyledTrackKml() {
         StringBuilder kml = new StringBuilder();
@@ -2853,8 +2897,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     }
 
 
-
-    private void showTrackingConfigurationPanel() {
+    // Menu to change tracking intervals (not used)
+    /*private void showTrackingConfigurationPanel() {
         // Inflate the layout manually
         LayoutInflater inflater = (LayoutInflater) getSystemService(LAYOUT_INFLATER_SERVICE);
         View popupView = inflater.inflate(R.layout.menu_tracking_config, null);
@@ -2924,7 +2968,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             // Displays the custom overlay in the upper right quadrant of the display screen
             popupWindow.showAtLocation(anchorView, Gravity.TOP | Gravity.END, 16, 150);
         }
-    }
+    }*/
 
     // Turn Tracking On
     private void turnTrackingOn(){
@@ -2940,6 +2984,8 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 tracks.get(currentTrackID).setId(newId);
                 addTrackFlag = true; // tracking icon is active
                 clickedTrack = -1; // hide balloon popups
+                clickTrackX = -1.0;
+                clickTrackY = -1.0;
                 showTracks = true;
                 action_showTracks.setChecked(true);
                 trackMenuItem.setIcon(R.drawable.ic_cyan_track);

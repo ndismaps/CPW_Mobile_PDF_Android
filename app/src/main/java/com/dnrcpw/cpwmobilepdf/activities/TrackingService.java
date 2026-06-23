@@ -23,13 +23,15 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
 
+import java.util.Random;
+
 public class TrackingService extends Service {
     private static final String CHANNEL_ID = "LocationTrackingChannel";
     private FusedLocationProviderClient fusedLocationClient;
     private LocationCallback locationCallback;
     // Global tracker configuration (Default values)
-    private long currentIntervalMillis = 10000; // 2 seconds default for testing     10000; // 10 seconds default
-    private long currentFastestIntervalMillis = 5000; // 5 seconds default
+    private long currentIntervalMillis = 15000; // 15 seconds for initial call
+    private long currentFastestIntervalMillis = 7000; // 7 seconds
     private boolean isAutoAdjustEnabled = true; // Toggle for speed-based adjustment
     private float lastSpeedMps = 0.0f;
     // used to write track data to the database
@@ -46,6 +48,7 @@ public class TrackingService extends Service {
     private double  longitude = -1.0;
     private double latitude_before = -1.0;
     private double longitude_before = -1.0;
+    private boolean debug = false;
 
     @Override
     public void onCreate() {
@@ -62,6 +65,34 @@ public class TrackingService extends Service {
                 }
 
                 for (Location location : locationResult.getLocations()) {
+
+
+                    // **Debug** make it simulate user movement to draw a track
+                    if (debug && latitude_before != -1){
+                        Random rand = new Random();
+                        int randomInt = 1;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                            randomInt = rand.nextInt(1,9);
+                        }
+                        if (randomInt > 7) randomInt = randomInt * -1;
+                        double r = (double)randomInt / 10000.0;
+                        latitude =  latitude_before + r;
+                        randomInt = 1;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                            randomInt = rand.nextInt(1,9);
+                        }
+                        if (randomInt > 7) randomInt = randomInt * -1;
+                        r = (double)randomInt / 10000.0;
+                        longitude = longitude_before + r;
+                    }
+                    // If the distance has not changed more than 3 meters, don't record the track segment
+                    if (isRecordingTracks && currentDBId != -1 && latitude_before != -1.0 && longitude_before != -1.0) {
+                        //if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) >= 3.0)
+                        //    Log.d("TrackingService", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) + " milliseconds=" + currentIntervalMillis);
+                        if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) < 3.0)
+                            return;
+                    }
+
                     // Save this lat long for next time as lat long before
                     latitude_before = latitude;
                     longitude_before = longitude;
@@ -77,6 +108,7 @@ public class TrackingService extends Service {
 
                     if (isAutoAdjustEnabled) {
                         adjustIntervalBasedOnSpeed(speed);
+                        Log.d("TrackingService", "speed="+speed+" milliseconds=" + currentIntervalMillis);
                     }
 
                     // Create an intent with a custom action string to update current location/distance to map
@@ -106,6 +138,21 @@ public class TrackingService extends Service {
                 }
             }
         };
+    }
+
+    public static double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+        // returns the distance between 2 lat,long points in meters
+        double EARTH_RADIUS = 6371000;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+
+        double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return EARTH_RADIUS * c; // Returns distance in meters
     }
 
     // Example public method your second activity might want to call
@@ -149,22 +196,6 @@ public class TrackingService extends Service {
                 currentDBId = intent.getLongExtra(EXTRA_CURRENT_DB_ID, -1);
                 updateNotificationText();
             } else {
-            /*Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
-                    .setContentTitle("Location Tracking")
-                    .setContentText("Running in the background...")
-                    .setSmallIcon(android.R.drawable.ic_menu_mylocation)
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
-                    .setOngoing(true)
-                    .build();
-
-            // Android 14 (API 34) UPSIDE_DOWN_CAKE requires specifying the service type at runtime
-            // Android Q, API 29+ requires specifying foreground service type at runtime.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION);
-            } else {
-                startForeground(1, notification);
-            }*/
-
                 // Check if the Intent contains custom interval update instructions
                 if (intent != null && intent.hasExtra("update_interval")) {
                     // User overridden via SeekBar: Disable auto-speed adjustment
