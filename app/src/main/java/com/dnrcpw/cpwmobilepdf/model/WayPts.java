@@ -20,6 +20,13 @@ public class WayPts {
         return obj;
     }
 
+    public WayPt add (String name, String desc, float x, float y, String colorName, String timeStamp, String location){
+        // Add a waypoint to the list.
+        WayPt obj = new WayPt(name, desc, x, y, colorName, timeStamp, location);
+        wayPts.add(obj);
+        return obj;
+    }
+
     public void add (int id, String name, String desc, float x, float y, String colorName, String time, String location){
         // Add a waypoint to the list.
         WayPt obj = new WayPt(id, name, desc, x, y, colorName, time, location);

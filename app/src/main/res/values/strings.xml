@@ -145,5 +145,6 @@
     <string name="writePermission">"Problem copying map to the App. No write permission."</string>
     <string name="createFile">Problem copying map to the App. Cannot create file.</string>
     <string name="importing">Importing map…</string>
+    <string name="importKmz">Importing KMZ waypoints and tracks</string>
     <string name="problemReadingDatabase">Cannot read maps database! Is disk full? Error: </string>
 </resources>

@@ -17,13 +17,21 @@ public class Track {
     // track is an array list of each line segment (x1,y1,x2,y2) for one path
     private List<TrackSegment> trackSegments = new ArrayList<>();
     private String time;
+    private double minLong;
+    private double maxLong;
+    private double minLat;
+    private double maxLat;
     public Track(){}
 
-    public Track(String mapName, String desc, String colorName, List<TrackSegment> trackSegments){
+    public Track(String mapName, String desc, String colorName, List<TrackSegment> trackSegments, double minLong, double maxLong, double minLat, double maxLat ){
         this.mapName = mapName;
         this.desc = desc;
         this.colorName = colorName;
         this.trackSegments = trackSegments;
+        this.minLong = minLong;
+        this.maxLong = maxLong;
+        this.minLat = minLat;
+        this.maxLat = maxLat;
         Calendar cal = Calendar.getInstance();
         java.util.Date date = cal.getTime();
         DateFormat formattedDate = new SimpleDateFormat("MM/dd/yyyy hh:mm aa", Locale.US);
@@ -74,6 +82,38 @@ public class Track {
     }
     public void setTrackSegments(List<TrackSegment> trackSegments){
         this.trackSegments = trackSegments;
+    }
+
+    public double getMinLong() {
+        return minLong;
+    }
+
+    public double getMaxLong() {
+        return maxLong;
+    }
+
+    public double getMinLat() {
+        return minLat;
+    }
+
+    public double getMaxLat() {
+        return maxLat;
+    }
+
+    public void setMinLong(double minLong) {
+        this.minLong = minLong;
+    }
+
+    public void setMaxLong(double maxLong) {
+        this.maxLong = maxLong;
+    }
+
+    public void setMinLat(double minLat) {
+        this.minLat = minLat;
+    }
+
+    public void setMaxLat(double maxLat) {
+        this.maxLat = maxLat;
     }
 
     public long getId() {

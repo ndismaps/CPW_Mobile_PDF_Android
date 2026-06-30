@@ -30,7 +30,7 @@ import java.util.Locale;
 
 public class DBHandler extends SQLiteOpenHelper {
     private static DBHandler sInstance; // used by every activity. Application context.
-    private static final int DATABASE_VERSION = 4;
+    private static final int DATABASE_VERSION = 5;
     private static final String DATABASE_NAME = "mapsInfo";
     // Maps table name
     private static final String TABLE_MAPS = "maps";
@@ -64,6 +64,10 @@ public class DBHandler extends SQLiteOpenHelper {
     private static final String KEY_LINE_SEGMENTS = "linesegments"; // comma delimited x,y pairs of long, lat
     private static final String KEY_COLOR = "color";
     private static final String KEY_TIME = "time";
+    private static final String KEY_MINLONG = "min_long";
+    private static final String KEY_MAXLONG = "max_long";
+    private static final String KEY_MINLAT = "min_lat";
+    private static final String KEY_MAXLAT = "max_lat";
 
     // Waypoint table name. Stores waypoints for each map
     private static final String TABLE_WAYPTS = "wayPts";
@@ -129,7 +133,7 @@ public class DBHandler extends SQLiteOpenHelper {
                      // version 3 new stuff
                      db1.execSQL("ALTER TABLE " + TABLE_SETTINGS + " ADD COLUMN " + KEY_SHOW_TRACKS + " TEXT");
                      db1.execSQL("UPDATE " + TABLE_SETTINGS + " SET " + KEY_SHOW_TRACKS + " = '0'");
-                     // Version 4 new stuff
+                     // Version 4 & 5 new stuff
                      // Create Tables if they don't exist
                      createWayPtTable(db1);
                      createTracksTable(db1);
@@ -155,6 +159,23 @@ public class DBHandler extends SQLiteOpenHelper {
                      // Migrate data from the other two standalone files into this open 'db1' instance
                      migrateExternalDatabase(context, db1, "wayPtsInfo", "wayPts");
                      migrateExternalDatabase(context, db1, "tracksInfo", "tracks");
+                 case 4:
+                     // Version 5 new stuff
+                     String selectQuery1 = "SELECT * FROM " + TABLE_TRACKS;
+                     Cursor cursor1 = db1.rawQuery(selectQuery1, null);
+                     if (cursor1.getColumnCount() == 6) {
+                         if (cursor1 != null) {
+                             cursor1.close();
+                         }
+                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MINLAT + " REAL");
+                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MINLAT + " = -1.0");
+                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MAXLAT + " REAL");
+                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MAXLAT + " = -1.0");
+                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MINLONG + " REAL");
+                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MINLONG + " = -1.0");
+                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MAXLONG + " REAL");
+                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MAXLONG + " = -1.0");
+                     }
              }
         }
     }
@@ -544,14 +565,16 @@ public class DBHandler extends SQLiteOpenHelper {
     // Tracks Table
     //--------------------------
     private void createTracksTable(SQLiteDatabase db1) throws SQLException {
-        String CREATE_TRACKS_TABLE = "CREATE TABLE " + TABLE_TRACKS + "("
+        String CREATE_TRACKS_TABLE = "CREATE TABLE IF NOT EXISTS " + TABLE_TRACKS + "("
                 + KEY_ID + " INTEGER PRIMARY KEY, " + KEY_MAPNAME + " TEXT, "
                 + KEY_DESC + " TEXT, " + KEY_LINE_SEGMENTS + " TEXT, "
-                + KEY_COLOR + " TEXT, " + KEY_TIME + " TEXT)";
+                + KEY_COLOR + " TEXT, " + KEY_TIME + " TEXT, "
+                + KEY_MINLONG + " REAL, " + KEY_MAXLONG + " REAL, "
+                + KEY_MINLAT + " REAL, " + KEY_MAXLAT + " REAL)";
         db1.execSQL(CREATE_TRACKS_TABLE);
     }
 
-    public synchronized void updateTrack(double latitude, double longitude, double latitude_before, double longitude_before, long currentDBId){
+    public synchronized void updateTrack(double latitude, double longitude, double latitude_before, double longitude_before, double minLong, double maxLong, double minLat, double maxLat, long currentDBId){
         // save the line segments when app is in the background and foreground
         // Called by TrackingService
         String lineSegments = "";
@@ -570,11 +593,14 @@ public class DBHandler extends SQLiteOpenHelper {
 
         ContentValues values = new ContentValues();
         values.put(KEY_LINE_SEGMENTS, lineSegments); // String of x1,y1,x2,y2,x3,y3,... line segments in long, lat
+        values.put(KEY_MINLONG,minLong);
+        values.put(KEY_MAXLONG,maxLong);
+        values.put(KEY_MINLAT,minLat);
+        values.put(KEY_MAXLAT,maxLat);
 
         // Update line segments
         db.update(TABLE_TRACKS, values,KEY_ID + " = ?",
                 new String[]{ String.valueOf(currentDBId) });
-        //db.close(); // is this needed????????????????????????
     }
 
     public long addTrack(Track track) throws SQLException {
@@ -585,8 +611,12 @@ public class DBHandler extends SQLiteOpenHelper {
         values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in long, lat
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
+        values.put(KEY_MINLONG,-1.0);
+        values.put(KEY_MAXLONG,-1.0);
+        values.put(KEY_MINLAT,-1.0);
+        values.put(KEY_MAXLAT,-1.0);
         // Inserting Row
-        return db.insert(TABLE_TRACKS, null, values);
+        return db.insertOrThrow(TABLE_TRACKS, null, values);
     }
 
     public int updateTrack(Track track){
@@ -597,6 +627,10 @@ public class DBHandler extends SQLiteOpenHelper {
         values.put(KEY_LINE_SEGMENTS, track.getLineSegments()); // String of x1,y1,x2,y2,x3,y3,... line segments in long, lat
         values.put(KEY_COLOR, track.getColorName()); // Color name of pushpin image
         values.put(KEY_TIME, track.getTime()); // Date and time of creation of track
+        values.put(KEY_MINLONG,track.getMinLong());
+        values.put(KEY_MAXLONG,track.getMaxLong());
+        values.put(KEY_MINLAT,track.getMinLat());
+        values.put(KEY_MAXLAT,track.getMaxLat());
         // updating row
         return db.update(TABLE_TRACKS, values, KEY_ID + " = ?",
                 new String[]{ String.valueOf(track.getId()) });
@@ -619,6 +653,13 @@ public class DBHandler extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         db.delete(TABLE_TRACKS, KEY_ID + " = ?",
                 new String[] { String.valueOf(id) });
+    }
+    public void deleteTracksTable(Context c){
+        SQLiteDatabase db = this.getWritableDatabase();
+        // delete tracks table
+        db.execSQL("DROP TABLE IF EXISTS "+ TABLE_TRACKS);
+        // Create tracks table again
+        onCreate(db);
     }
 
     // Get all tracks for a given map
@@ -653,7 +694,7 @@ public class DBHandler extends SQLiteOpenHelper {
                     deleteIds.add(cursor.getInt(0));
                 // Adding track to list if matches name
                 else if (mapName.equals(cursor.getString(1))) {
-                    trackList.add(Integer.parseInt(cursor.getString(0)), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4), cursor.getString(5));
+                    trackList.add(Integer.parseInt(cursor.getString(0)), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4), cursor.getString(5), cursor.getDouble(6), cursor.getDouble(7), cursor.getDouble(8), cursor.getDouble(9));
                 }
             } while (cursor.moveToNext());
         }
@@ -670,7 +711,7 @@ public class DBHandler extends SQLiteOpenHelper {
     // Waypoint Table
     //---------------------------
     private void createWayPtTable(SQLiteDatabase db1) throws SQLException {
-        String CREATE_WAYPTS_TABLE = "CREATE TABLE " + TABLE_WAYPTS + "("
+        String CREATE_WAYPTS_TABLE = "CREATE TABLE IF NOT EXISTS " + TABLE_WAYPTS + "("
                 + KEY_ID + " INTEGER PRIMARY KEY, " + KEY_MAPNAME + " TEXT, "
                 + KEY_DESC + " TEXT, " + KEY_X + " FLOAT, "
                 + KEY_Y + " FLOAT, " +KEY_COLOR + " TEXT, " + KEY_TIME + " TEXT, "
@@ -684,7 +725,6 @@ public class DBHandler extends SQLiteOpenHelper {
         db.execSQL("DROP TABLE IF EXISTS "+ TABLE_WAYPTS);
         // Create maps table again
         onCreate(db);
-        Toast.makeText(c, "All imported waypoints were deleted.", Toast.LENGTH_LONG).show();
     }*/
 
     // Adding waypoint

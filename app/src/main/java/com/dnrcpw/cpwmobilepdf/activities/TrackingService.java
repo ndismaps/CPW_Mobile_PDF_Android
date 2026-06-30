@@ -45,11 +45,15 @@ public class TrackingService extends Service {
     private boolean isRecordingTracks = false;
     private int currentTrackId = -1;
     private long currentDBId = -1;
+    private double minLong = -1.0;
+    private double maxLong = -1.0;
+    private double minLat = -1.0;
+    private double maxLat = -1.0;
     private double  latitude = -1.0;
     private double  longitude = -1.0;
     private double latitude_before = -1.0;
     private double longitude_before = -1.0;
-    private boolean debug = false;
+    private boolean debug = true;
 
     @Override
     public void onCreate() {
@@ -72,37 +76,7 @@ public class TrackingService extends Service {
                         currentIntervalMillis = 15000;
                         currentFastestIntervalMillis = 7000;
                     }
-                    // **Debug** make it simulate user movement to draw a track
-                    if (debug && latitude_before != -1){
-                        Random rand = new Random();
-                        int randomInt = 1;
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                            randomInt = rand.nextInt(1,9);
-                        }
-                        if (randomInt > 7) randomInt = randomInt * -1;
-                        double r = (double)randomInt / 10000.0;
-                        latitude =  latitude_before + r;
-                        randomInt = 1;
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
-                            randomInt = rand.nextInt(1,9);
-                        }
-                        if (randomInt > 7) randomInt = randomInt * -1;
-                        r = (double)randomInt / 10000.0;
-                        longitude = longitude_before + r;
-                    }
-                    // If the distance has not changed more than 3 meters, don't record the track segment
-                    if (isRecordingTracks && currentDBId != -1 && latitude_before != -1.0 && longitude_before != -1.0) {
-                        //if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) >= 3.0)
-                        //    Log.d("TrackingService", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) + " milliseconds=" + currentIntervalMillis);
-                        if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) < 3.0)
-                            return;
-                    }
 
-                    // Save this lat long for next time as lat long before
-                    latitude_before = latitude;
-                    longitude_before = longitude;
-                    latitude = location.getLatitude();
-                    longitude = location.getLongitude();
                     double altitude = location.hasAltitude() ? location.getAltitude() : -1.0;
                     float accuracy = location.getAccuracy(); // Get accuracy in meters
                     // Default to -1.0f if the location object does not contain a valid bearing
@@ -114,6 +88,72 @@ public class TrackingService extends Service {
                     if (isAutoAdjustEnabled) {
                         adjustIntervalBasedOnSpeed(speed);
                         Log.d("TrackingService", "speed="+speed+" milliseconds=" + currentIntervalMillis);
+                    }
+
+                    // Conditionally save to SQLite database if track recording is toggled on
+                    if (accuracy < 10) {
+                        if (isRecordingTracks && currentDBId != -1 && latitude != -1.0) {
+                            // Save this lat long for next time as lat long before
+                            latitude_before = latitude;
+                            longitude_before = longitude;
+                            latitude = location.getLatitude();
+                            longitude = location.getLongitude();
+
+                            // **Debug** make it simulate user movement to draw a track
+                            if (debug && latitude_before != -1.0) {
+                                Random rand = new Random();
+                                int randomInt = 1;
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                                    randomInt = rand.nextInt(1, 9);
+                                }
+                                if (randomInt > 7) randomInt = randomInt * -1;
+                                double r = (double) randomInt / 10000.0;
+                                latitude = latitude_before + r;
+                                randomInt = 1;
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+                                    randomInt = rand.nextInt(1, 9);
+                                }
+                                if (randomInt > 7) randomInt = randomInt * -1;
+                                r = (double) randomInt / 10000.0;
+                                longitude = longitude_before + r;
+                            }
+
+                            // If the distance has not changed more than 3 meters, don't record the track segment
+                            //if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) >= 3.0)
+                            //    Log.d("TrackingService", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) + " milliseconds=" + currentIntervalMillis);
+                            if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) < 3.0)
+                                return;
+
+                            if (maxLat == -1.0) {
+                                minLong = longitude;
+                                maxLong = longitude;
+                                minLat = latitude;
+                                maxLat = latitude;
+                            } else if (longitude < minLong) {
+                                minLong = longitude;
+                            } else if (longitude > maxLong) {
+                                maxLong = longitude;
+                            } else if (latitude < minLat) {
+                                minLat = latitude;
+                            } else if (latitude > maxLat) {
+                                maxLat = latitude;
+                            }
+                            dbHelper.updateTrack(
+                                    latitude,
+                                    longitude,
+                                    latitude_before,
+                                    longitude_before,
+                                    minLong,
+                                    maxLong,
+                                    minLat,
+                                    maxLat,
+                                    currentDBId
+                            );
+
+                        } else {
+                            latitude = location.getLatitude();
+                            longitude = location.getLongitude();
+                        }
                     }
 
                     // Create an intent with a custom action string to update current location/distance to map
@@ -129,17 +169,6 @@ public class TrackingService extends Service {
                     // Broadcast to the system (restricted to your app package for security)
                     intent.setPackage(getPackageName());
                     sendBroadcast(intent);
-
-                    // Conditionally save to SQLite database if recording is toggled on
-                    if (isRecordingTracks && currentDBId != -1) {
-                        dbHelper.updateTrack(
-                                latitude,
-                                longitude,
-                                latitude_before,
-                                longitude_before,
-                                currentDBId
-                        );
-                    }
                 }
             }
         };
@@ -199,11 +228,15 @@ public class TrackingService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null) {
-            // Handle requests to turn recording on or off
+            // Handle requests to turn track recording on or off
             if (ACTION_TOGGLE_RECORDING.equals(intent.getAction())) {
                 isRecordingTracks = intent.getBooleanExtra(EXTRA_IS_RECORDING, false);
                 currentTrackId = intent.getIntExtra(EXTRA_CURRENT_TRACK_ID, -1);
                 currentDBId = intent.getLongExtra(EXTRA_CURRENT_DB_ID, -1);
+                minLong = -1.0;
+                maxLong = -1.0;
+                minLat = -1.0;
+                maxLat = -1.0;
                 updateNotificationText();
             } else {
                 // Check if the Intent contains custom interval update instructions

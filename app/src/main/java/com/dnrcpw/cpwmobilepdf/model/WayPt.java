@@ -32,6 +32,17 @@ public class WayPt {
         this.location = location;
     }
 
+    public WayPt(String name, String desc, float x, float y, String colorName, String timeStamp, String location){
+        // time must be formatted "MM/dd/yyyy hh:mm aa"
+        this.name = name;
+        this.desc = desc;
+        this.x = x;
+        this.y = y;
+        this.time = timeStamp;
+        this.colorName = colorName;
+        this.location = location;
+    }
+
     public WayPt(int id, String name, String desc, float x, float y, String colorName, String time, String location){
         this.id = id;
         this.name = name;
@@ -72,11 +83,11 @@ public class WayPt {
     }
     public String getLat() {
         int pos = location.indexOf(",");
-        return location.substring(0,pos);
+        return location.substring(0,pos).trim();
     }
     public String getLong(){
         int pos = location.indexOf(",");
-        return location.substring(pos+1);
+        return location.substring(pos+1).trim();
     }
 
     public String getTime() {

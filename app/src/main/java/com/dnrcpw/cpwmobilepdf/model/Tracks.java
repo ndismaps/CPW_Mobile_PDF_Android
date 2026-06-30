@@ -10,16 +10,16 @@ public class Tracks {
     public Tracks(){
         this.tracks = new ArrayList<>();
     }
-    public Track add(String name, String desc, String colorName, List<TrackSegment> trackSegment){
+    public Track add(String name, String desc, String colorName, List<TrackSegment> trackSegment, double minLong, double maxLong, double minLat, double maxLat){
         // Add a track to the list.
         if (trackSegment == null)
             trackSegment =  new ArrayList<>();
-        Track obj = new Track(name, desc, colorName, trackSegment);
+        Track obj = new Track(name, desc, colorName, trackSegment, minLong, maxLong, minLat, maxLat);
         tracks.add(obj);
         return obj;
     }
 
-    public void add(int id, String name, String desc, String trackSegment, String colorName, String time){
+    public void add(int id, String name, String desc, String trackSegment, String colorName, String time, double minLong, double maxLong, double minLat, double maxLat){
         // Add a track to tracks array.
         // Called in DBHandler getTracks
         Track obj = new Track(id, name, desc, trackSegment, colorName, time);

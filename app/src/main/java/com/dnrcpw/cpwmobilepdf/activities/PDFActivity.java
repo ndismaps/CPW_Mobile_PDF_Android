@@ -34,6 +34,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.os.PowerManager;
 import android.provider.MediaStore;
 import android.provider.Settings;
@@ -41,13 +42,10 @@ import android.text.TextPaint;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.ActionMode;
-import android.view.Gravity;
-import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
 import android.view.inputmethod.EditorInfo;
@@ -60,6 +58,7 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
@@ -83,6 +82,7 @@ import com.dnrcpw.cpwmobilepdf.model.Tracks;
 import com.github.barteksc.pdfviewer.PDFView;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.OutputStream;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -109,7 +109,12 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.w3c.dom.DOMException;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 /* show the map */
 public class PDFActivity extends AppCompatActivity implements SensorEventListener {
@@ -204,6 +209,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     private int currentTrackID = -1;
     private int clickedWP; // index of waypoint that was clicked on
     private int clickedTrack; // index of track that was clicked on
+    private int numWayPtsTracksClicked; // number of waypoints and tracks that were clicked on
     private double clickTrackX;  // x in longitude, of track that was clicked on
     private double clickTrackY; // y in latitude, track that was clicked on
     private int adjustWP; // index of waypoint that was clicked on to adjust location (move button clicked)
@@ -255,6 +261,18 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     Button menuBtn;
     private static final int BACKGROUND_REQUEST_CODE = 1002;
     boolean passedPermissions = false;
+    // Select KMZ file with file picker and import
+    ActivityResultLauncher<String> mGetKmz = registerForActivityResult(new ActivityResultContracts.GetContent(),
+        new ActivityResultCallback<>() {
+            @Override
+            public void onActivityResult(Uri uri) {
+                if (uri == null) return;
+                // Handle the returned Uri
+                Toast toast = Toast.makeText(PDFActivity.this, getResources().getString(R.string.importKmz), Toast.LENGTH_SHORT);
+                toast.show();
+                importKmz(uri);
+            }
+        });
 
    //    @SuppressLint("SourceLockedOrientationActivity")
 
@@ -295,6 +313,12 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     protected void onCreate(Bundle savedInstanceState) {
         // final RelativeLayout wait; // indeterminate progress bar
         super.onCreate(savedInstanceState);
+
+        // debug delete tracks table
+        /*dbExecutor.execute(() -> {
+                    DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                    db.deleteTracksTable(PDFActivity.this);
+                });*/
         setContentView(R.layout.activity_pdf);
         // SET UP LOCATION SERVICES
         try {
@@ -336,6 +360,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         clickedTrack = -1; // index of track that was clicked on
         clickTrackX = -1.0; // x,y point of track that was clicked on
         clickTrackY = -1.0;
+        numWayPtsTracksClicked = 0;
         adjustWP = -1; // long press on pin to adjust location
         newWP = false; // if added a new waypoint show balloon too
         txtCol = new TextPaint(); // text color for waypoint balloon popup
@@ -500,6 +525,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 clickedTrack = -1; // hide balloon for tracks
                 clickTrackX = -1.0;
                 clickTrackY = -1.0;
+                numWayPtsTracksClicked = 0;
                 turnTrackingOn();
                 // set orientation for this map
                 portraitLocked = maps.get(id).getMapOrientation().equals("portrait");
@@ -811,6 +837,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                 y < (wayPtY + margBottom) && y >= (wayPtY - margTop)) {
                             lastClickedWP = clickedWP;
                             clickedWP = i1;
+                            numWayPtsTracksClicked++;
                             found = true;
                             pdfView.invalidate();
                             //Log.d("onTap","Clicked on existing waypoint.");
@@ -825,36 +852,40 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         clickTrackY = -1.0;
                         boolean tFound = false;
                         for (var t = 0; t < tracks.size(); t++) {
-                            if (tFound) break;
+                            //if (tFound) break;
                             Track track = tracks.get(t);
+                            double xLong = (double) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
+                            double yLat = (double) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
 
-                            for (var s = 0; s < tracks.get(t).getTrackSegments().size(); s++) {
-                                TrackSegment segment = track.getTrackSegments().get(s);
-                                if (segment != null) {
-                                    // Check if clicked point is on the line segment using the distance of a point to a line
-                                    double dist = distToSegmentSquared((double)x, (double)y,
-                                            segment.getX1(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
-                                            segment.getY1(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()),
-                                            segment.getX2(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
-                                            segment.getY2(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()));
-                                    dist = (double) Math.sqrt(dist); // square root
-                                    Log.d("distance", "distance squared " + dist + " zoom=" + zoom);
-                                    int checkDistance = 100;
-                                    if (zoom <= 2) checkDistance = 100;
-                                    else if (zoom <= 3) checkDistance = 200;
-                                    else if (zoom <= 5) checkDistance = 300;
-                                    else if (zoom <= 7) checkDistance = 400;
-                                    else if (zoom <= 9) checkDistance = 500;
-                                    else if (zoom <= 10) checkDistance = 600;
-                                    else checkDistance = 800;
-                                    if (dist < checkDistance) {
-                                        // show popup for track
-                                        clickedTrack = t; // tracks index
-                                        // convert screen coordinates to lat, long
-                                        clickTrackX = (double) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
-                                        clickTrackY = (double) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
-                                        tFound = true;
-                                        break;
+                            // see if map click is inside bounding box of track
+                            if (xLong >= track.getMinLong() && xLong <= track.getMaxLong() &&
+                                yLat >= track.getMinLat() && yLat <= track.getMaxLat()) {
+                                for (var s = 0; s < tracks.get(t).getTrackSegments().size(); s++) {
+                                    TrackSegment segment = track.getTrackSegments().get(s);
+                                    if (segment != null) {
+                                        // Check if clicked point is on the line segment using the distance of a point to a line
+                                        double dist = distToSegmentSquared((double) x, (double) y,
+                                                segment.getX1(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
+                                                segment.getY1(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()),
+                                                segment.getX2(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
+                                                segment.getY2(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()));
+                                        dist = (double) Math.sqrt(dist); // square root
+                                        Log.d("distance", "distance squared " + dist + " zoom=" + zoom);
+                                        int checkDistance = 100;
+                                        if (zoom <= 2) checkDistance = 100;
+                                        else if (zoom <= 5) checkDistance = 200;
+                                        else if (zoom <= 10) checkDistance = 300;
+                                        else if (zoom <= 15) checkDistance = 400;
+                                        if (dist < checkDistance) {
+                                            // show popup for track
+                                            clickedTrack = t; // tracks index
+                                            numWayPtsTracksClicked++;
+                                            // convert screen coordinates to lat, long
+                                            clickTrackX = xLong; //(double) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
+                                            clickTrackY = yLat; //(double) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
+                                            //tFound = true;
+                                            //break;
+                                        }
                                     }
                                 }
                             }
@@ -1222,8 +1253,6 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         canvas.drawCircle(0, 0, 15f, cyan); // blue center
                         // go back to 0,0
                         canvas.translate((float) -currentLocationX, (float) -currentLocationY);
-
-
                     }
 
                     // hide wait icon
@@ -1236,10 +1265,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             }).onLoad(nbPages -> {
                 // SET LEVELS TO ZOOM TO WHEN DOUBLE CLICK, 34x44=3168, 22x34=2448
                 if (mediaBoxWidth > 1500) {
-                    pdfView.setMaxZoom(25f);// used to be 3.0f, 7, 20
-                    pdfView.setMidZoom(7f);// used to be 1.75f 3.5
+                    pdfView.setMaxZoom(50f);// 25f // used to be 3.0f, 7, 20
+                    pdfView.setMidZoom(7f);// 7f // used to be 1.75f 3.5
                 } else {
-                    pdfView.setMaxZoom(15f);// used to be 3.0f, 7, 20
+                    pdfView.setMaxZoom(25f);//15f // used to be 3.0f, 7, 20
                     pdfView.setMidZoom(3.5f);// used to be 1.75f 3.5
                 }
                 pdfView.setMinZoom(1f); // default is 1 (full document, no zoom)
@@ -1746,6 +1775,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 clickedTrack = -1;
                 clickTrackX = -1.0;
                 clickTrackY = -1.0;
+                numWayPtsTracksClicked = 0;
                 adjustWP = -1;
                 newWP = false;
                 adjacentMapsBtnShowing = false;
@@ -1858,16 +1888,37 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         (latNow >= lat1 && latNow <= lat2) &&
                         (longNow >= long1 && longNow <= long2)) {
 
-                    // Update display
-                    Track currentTrack = tracks.get(currentTrackID);
-                    Log.d("TrackingService","currentTrackID="+currentTrackID+" "+longBefore+" "+latBefore+" "+longNow+" "+latNow);
-                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
-                    // Save new line segment in database
-                    // Handled in TrackingService onLocationResult
-                    //dbExecutor.execute(() -> {
-                    //    DBHandler db = DBHandler.getInstance(PDFActivity.this);
-                    //    db.updateTrack(currentTrack);
-                    //});
+                    // Update display if accuracy is less than 10 meters
+                    if (accuracy < 10) {
+                        Track currentTrack = tracks.get(currentTrackID);
+                        Log.d("TrackingService", "currentTrackID=" + currentTrackID + " " + longBefore + " " + latBefore + " " + longNow + " " + latNow);
+                        currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
+                        // update min max lat and long
+                        if (currentTrack.getMaxLat() == -1.0) {
+                            currentTrack.setMinLong(longNow);
+                            currentTrack.setMaxLong(longNow);
+                            currentTrack.setMinLat(latNow);
+                            currentTrack.setMaxLat(latNow);
+                        }
+                        if (longNow < currentTrack.getMinLong()) {
+                            currentTrack.setMinLong(longNow);
+                        }
+                        if (longNow > currentTrack.getMaxLong()) {
+                            currentTrack.setMaxLong(longNow);
+                        }
+                        if (latNow < currentTrack.getMinLat()) {
+                            currentTrack.setMinLat(latNow);
+                        }
+                        if (latNow > currentTrack.getMaxLat()) {
+                            currentTrack.setMaxLat(latNow);
+                        }
+                        // Save new line segment in database - handled in TrackingService
+                        // Handled in TrackingService onLocationResult
+                        //dbExecutor.execute(() -> {
+                        //    DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                        //    db.updateTrack(currentTrack);
+                        //});
+                    }
                 }
 
                 //bearing = location.getBearing(); // 0-360 degrees 0 at North
@@ -2264,6 +2315,11 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
 
             // Export out to downloads folder
             String fileName = mapName;
+            // strip off .pdf
+            int pos = fileName.indexOf(".pdf");
+            if (pos != -1){
+                fileName = fileName.substring(0,pos-1);
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 fileName = fileName + LocalDate.now() + LocalTime.now();
             }else{
@@ -2276,7 +2332,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         }
         // Upload KMZ file of all tracks and waypoints in this map
         else if (id == R.id.action_uploadKMZTracks){
-
+            /* Fires an intent to spin up the "file chooser" UI and select a kmz
+             * ACTION_OPEN_DOCUMENT is the intent to choose a file via the system's file
+             * browser. */
+            mGetKmz.launch("application/vnd.google-earth.kmz");
         }
         // All Waypoint Labels
         else if (id == R.id.action_showAll){
@@ -2684,44 +2743,157 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     // KMZ Files
     //
      // Upload a kmz file
-    public void KmzReader() {
-        //public static void main(String[] args) {
-        //File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+    public void importKmz(Uri uri) {
+        // Called by file picker ActivityResultLauncher defined at the top
 
-        // Use file picker TODO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            String kmzFilePath = "path/to/your/file.kmz";
+           // String kmzFilePath = "path/to/your/file.kmz";
+        ParcelFileDescriptor pfd = null;
+        FileInputStream fileInputStream = null;
+        try {
+            pfd = getContentResolver().openFileDescriptor(uri, "r");
+        } catch (FileNotFoundException e) {
+            ToastUtils.showExtendedToast(PDFActivity.this, "KMZ file not found.");
+            return;
+        }
+        if (pfd != null) {
+            fileInputStream = new FileInputStream(pfd.getFileDescriptor());
+        }
 
-            try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(kmzFilePath)))) {
-                ZipEntry entry;
+        try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(fileInputStream))) {
+            ZipEntry entry;
 
-                // Iterate through the files inside the KMZ archive
-                while ((entry = zis.getNextEntry()) != null) {
-                    // Look for the main KML file (usually ends with .kml)
-                    if (entry.getName().toLowerCase().endsWith(".kml")) {
-                        System.out.println("Found KML file: " + entry.getName());
+            // Iterate through the files inside the KMZ archive
+            while ((entry = zis.getNextEntry()) != null) {
+                // Look for the main KML file (usually ends with .kml)
+                if (entry.getName().toLowerCase().endsWith(".kml")) {
+                    System.out.println("Found KML file: " + entry.getName());
 
-                        // Parse the KML input stream using Java's built-in DOM parser
-                        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-                        factory.setNamespaceAware(true);
-                        DocumentBuilder builder = factory.newDocumentBuilder();
+                    // Parse the KML input stream using Java's built-in DOM parser
+                    DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                    factory.setNamespaceAware(true);
+                    DocumentBuilder builder = factory.newDocumentBuilder();
 
-                        // Pass the active ZipInputStream directly into the parser
-                        Document doc = builder.parse(zis);
-                        doc.getDocumentElement().normalize();
+                    // Pass the active ZipInputStream directly into the parser
+                    Document doc = builder.parse(zis);
+                    doc.getDocumentElement().normalize();
 
-                        // Print out the root XML tag to verify success
-                        System.out.println("Root element: " + doc.getDocumentElement().getNodeName());
+                    // Print out the root XML tag to verify success
+                    System.out.println("Root element: " + doc.getDocumentElement().getNodeName());
 
-                        // Close the current zip entry tracking
-                        zis.closeEntry();
-                        break;
+                    NodeList nodeList = doc.getElementsByTagName("Placemark");
+
+                    // Loop through the Placemarks
+                    for (int i = 0; i < nodeList.getLength(); i++) {
+                        Node node = nodeList.item(i);
+
+                        if (node.getNodeType() == Node.ELEMENT_NODE) {
+                            Element element = (Element) node;
+
+                            // Read tag attributes
+                            //String userId = element.getAttribute("id");
+
+                            // Read inner text values of child tags
+                            String name;
+                            String color;
+                            if (element.getElementsByTagName("name").getLength() > 0){
+                                name = element.getElementsByTagName("name").item(0).getTextContent();
+                            } else {
+                                // Missing name tag, use default
+                                name = "Waypoint 1";
+                            }
+                            if (element.getElementsByTagName("styleUrl").getLength() != 0){
+                                color = element.getElementsByTagName("styleUrl").item(0).getTextContent().substring(1);
+                            } else {
+                                // Missing styleUrl tag, use default
+                                color = "cyan";
+                            }
+                            // Waypoints
+                            Node ptNode = element.getElementsByTagName("Point").item(0);
+                            if (ptNode != null && ptNode.getNodeType() == Node.ELEMENT_NODE) {
+                                Element pt = (Element) ptNode;
+
+                                // Get Time Stamp
+                                String tim = "";
+                                String timeStamp = pt.getElementsByTagName("when").item(0).getTextContent(); // <TimeStamp><when>2026-06-18T23:35:00Z</when>
+                                // Convert 2026-06-18T23:35:00Z to MM/dd/yyyy hh:mm aa
+                                tim = convertKmzDateToNormal(timeStamp);
+                                // Get Coordinates
+                                String longLat = ""; // long,lat,0
+                                Node xy = pt.getElementsByTagName("coordinates").item(0);
+                                if (xy.getNodeType() == Node.ELEMENT_NODE) {
+                                    Element xyElem = (Element) xy;
+                                    longLat = xyElem.getTextContent();
+                                    String[] longLatArr = longLat.split(",");
+                                    float longitude = Float.parseFloat(longLatArr[0]);
+                                    float latitude = Float.parseFloat(longLatArr[1]);
+                                    String location = String.format(Locale.US,"%.5f", latitude) + ", " + String.format(Locale.US,"%.5f", longitude);
+                                    // add waypoint
+                                    WayPt wayPt = wayPts.add(mapName,name,(float) longitude,(float) latitude,color,tim,location);
+                                    dbExecutor.execute(() -> {
+                                        DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                                        try {
+                                            db.addWayPt(wayPt);
+                                        } catch (SQLException exc) {
+                                            new Handler(Looper.getMainLooper()).post(() -> {
+                                                Toast.makeText(PDFActivity.this, "Failed to save waypoint in import KMZ. " + exc.getMessage(), Toast.LENGTH_LONG).show();
+                                                wayPts.remove(longitude, latitude);
+                                                clickedWP = -1;
+                                                newWP = false;
+                                                addWayPtFlag = false;
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                            // Tracks
+                            else {
+                                Node trackNode = element.getElementsByTagName("gx:Track").item(0);
+                                if (trackNode != null && trackNode.getNodeType() == Node.ELEMENT_NODE) {
+                                    Element trackElem = (Element) trackNode;
+
+                                    // Get Time Stamp
+                                    String tim = "";
+                                    String timeStamp = trackElem.getElementsByTagName("when").item(0).getTextContent(); // <TimeStamp><when>2026-06-18T23:35:00Z</when>
+                                    // Convert 2026-06-18T23:35:00Z to MM/dd/yyyy hh:mm aa
+                                    tim = convertKmzDateToNormal(timeStamp);
+
+                                    Track track = tracks.add(mapName,name,color,null, -1.0, -1.0, -1.0, -1.0);
+                                    // Get Coordinates
+                                    double lastLat = -1.0;
+                                    double lastLong = -1.0;
+                                    NodeList coords = trackElem.getElementsByTagName("gx:coord");
+                                    for (int j = 0; j < coords.getLength(); j++) {
+                                        Node coordNode = coords.item(j);
+                                        if (coordNode.getNodeType() == Node.ELEMENT_NODE) {
+                                            Element coordElem = (Element) coordNode;
+                                            String[] segment = coordElem.getTextContent().split(" ");
+                                            if (lastLat == -1.0){
+                                                lastLong = Double.parseDouble(segment[0]);
+                                                lastLat = Double.parseDouble(segment[1]);
+                                                continue;
+                                            }
+                                            track.addTrackSegment(lastLong, lastLat, Double.parseDouble(segment[0]),Double.parseDouble(segment[1]));
+                                        }
+                                    }
+                                    dbExecutor.execute(() -> {
+                                        DBHandler db = DBHandler.getInstance(PDFActivity.this);
+                                        long newId = db.addTrack(track);
+                                        track.setId(newId);
+                                    });
+                                }
+                            }
+                        }
                     }
+                    // Close the current zip entry tracking
                     zis.closeEntry();
+                    break;
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
+                zis.closeEntry();
             }
-       // }
+        } catch (Exception e) {
+            ToastUtils.showExtendedToast(PDFActivity.this, "Import KMZ file failed. "+e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     // Write waypoints and tracks to KML format
@@ -2803,6 +2975,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         for (int index = 0; index < wayPts.size(); index++) {
             kml.append("    <Placemark>\n");
             kml.append("      <name>").append(wayPts.get(index).getDesc()).append("</name>\n");
+            kml.append("      <styleUrl>#").append(wayPts.get(index).getColorName()).append("</styleUrl>\n"); // Link to style id above
             kml.append("      <Point>\n");
             // Bind a single timestamp to the entire Placemark feature
             String timestamp = convertStringToKmlTimestamp(wayPts.get(index).getTime(),"MM/dd/yyyy hh:mm a");
@@ -2827,14 +3000,14 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         if (incomingDateStr == null || incomingDateStr.trim().isEmpty()) return "";
 
         try {
-            // 1. Create a parser matching your raw data format (e.g., local time setup)
+            // Create a parser matching your raw data format (e.g., local time setup)
             SimpleDateFormat inputFormat = new SimpleDateFormat(inputPattern, Locale.US);
             // If your string source is already in UTC, uncomment the line below:
             // inputFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
 
             Date parsedDate = inputFormat.parse(incomingDateStr);
 
-            // 2. Format out to clean ISO 8601 KML structure
+            // Format out to clean ISO 8601 KML structure
             SimpleDateFormat kmlFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
             kmlFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
             if (parsedDate != null)
@@ -2847,6 +3020,25 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             else
                 Log.e("PDFActivity","Error in convertStringToKmlTimestamp");
             return ""; // Return empty or handle error fallback gracefully
+        }
+    }
+    public String convertKmzDateToNormal(String inputDate){
+        // Define input format with 'Z' escaped
+        SimpleDateFormat inputFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+        inputFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        // Define output format
+        SimpleDateFormat outputFormat = new SimpleDateFormat("MM/dd/yyyy hh:mm a", Locale.US);
+        outputFormat.setTimeZone(TimeZone.getDefault()); // Or TimeZone.getTimeZone("UTC")
+
+        try {
+            Date date = inputFormat.parse(inputDate);
+            String outputDate = outputFormat.format(date);
+            return outputDate;
+            //System.out.println(outputDate); // Outputs: 06/18/2026 11:35 PM
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "";
         }
     }
     public void exportKmzToDownloads(Context context, String fileName, String kmlContent) {
@@ -2974,18 +3166,27 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     private void turnTrackingOn(){
         passedPermissions = true; // user allowed tracks to run in the background
         int num = findAUniqueTrackName();
-        tracks.add(mapName,"Track "+num, "cyan", null);
+        tracks.add(mapName,"Track "+num, "cyan", null, -1.0, -1.0, -1.0, -1.0);
         currentTrackID = tracks.size()-1;
         dbExecutor.execute(() -> {
             DBHandler db = DBHandler.getInstance(PDFActivity.this);
-            long newId = db.addTrack(tracks.get(currentTrackID));
+            long newId = -1;
+            try{
+                newId = db.addTrack(tracks.get(currentTrackID));
+            } catch (SQLException e) {
+                new Handler(Looper.getMainLooper()).post(() -> {
+                    Toast.makeText(PDFActivity.this, e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
             // Switch to main thread to push the data to your UI
+            long finalNewId = newId;
             runOnUiThread(() -> {
-                tracks.get(currentTrackID).setId(newId);
+                tracks.get(currentTrackID).setId(finalNewId);
                 addTrackFlag = true; // tracking icon is active
                 clickedTrack = -1; // hide balloon popups
                 clickTrackX = -1.0;
                 clickTrackY = -1.0;
+                numWayPtsTracksClicked = 0;
                 showTracks = true;
                 action_showTracks.setChecked(true);
                 trackMenuItem.setIcon(R.drawable.ic_cyan_track);
@@ -2994,7 +3195,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 intent.setAction(TrackingService.ACTION_TOGGLE_RECORDING);
                 intent.putExtra(TrackingService.EXTRA_IS_RECORDING, true);
                 intent.putExtra(TrackingService.EXTRA_CURRENT_TRACK_ID, currentTrackID);
-                intent.putExtra(TrackingService.EXTRA_CURRENT_DB_ID, newId);
+                intent.putExtra(TrackingService.EXTRA_CURRENT_DB_ID, finalNewId);
                 startService(intent);
                 Toast.makeText(PDFActivity.this, getResources().getString(R.string.trackingOn), Toast.LENGTH_LONG).show();
             });
@@ -3008,6 +3209,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         trackMenuItem.setIcon(R.drawable.ic_gray_track); // set to gray track
         currentTrackID = -1;
         clickedTrack = -1;
+        numWayPtsTracksClicked = 0;
         // Stop recording tracks to the database
         Intent intent = new Intent(this, TrackingService.class);
         intent.setAction(TrackingService.ACTION_TOGGLE_RECORDING);
