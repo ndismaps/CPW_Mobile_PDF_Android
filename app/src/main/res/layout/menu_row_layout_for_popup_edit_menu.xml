@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+android:layout_width="match_parent"
+android:layout_height="wrap_content"
+android:orientation="horizontal"
+android:padding="1dp"
+android:gravity="center_vertical">
+
+<TextView
+    android:id="@+id/menu_edit_popup_item_label"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_weight="1"
+    android:text="Multiple Found"
+    android:textSize="16sp"
+    android:textColor="@android:color/black" />
+
+<Button
+    android:id="@+id/menu_edit_popup_edit_btn_action"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Edit"
+    android:minWidth="44dp"
+    style="?android:attr/buttonStyleSmall"/>
+
+<Button
+    android:id="@+id/menu_edit_popup_delete_btn_action"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Delete"
+    android:minWidth="44dp"
+    style="?android:attr/buttonStyleSmall"/>
+
+<Button
+    android:id="@+id/menu_edit_popup_move_btn_action"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:text="Move"
+    android:minWidth="44dp"
+    style="?android:attr/buttonStyleSmall"/>
+</LinearLayout>

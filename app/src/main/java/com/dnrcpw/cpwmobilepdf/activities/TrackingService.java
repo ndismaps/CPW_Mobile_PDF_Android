@@ -31,8 +31,8 @@ public class TrackingService extends Service {
     private LocationCallback locationCallback;
     // Global tracker configuration (Default values)
     private static boolean firstTime = true;
-    private long currentIntervalMillis = 1000; // 15 seconds for initial call
-    private long currentFastestIntervalMillis = 500; // 7 seconds
+    private long currentIntervalMillis = 1000; // 1 second for initial call
+    private long currentFastestIntervalMillis = 500; // 1/2 second
     private boolean isAutoAdjustEnabled = true; // Toggle for speed-based adjustment
     private float lastSpeedMps = 0.0f;
     // used to write track data to the database
@@ -53,7 +53,7 @@ public class TrackingService extends Service {
     private double  longitude = -1.0;
     private double latitude_before = -1.0;
     private double longitude_before = -1.0;
-    private boolean debug = true;
+    private boolean debug = false;
 
     @Override
     public void onCreate() {
@@ -87,15 +87,12 @@ public class TrackingService extends Service {
 
                     if (isAutoAdjustEnabled) {
                         adjustIntervalBasedOnSpeed(speed);
-                        Log.d("TrackingService", "speed="+speed+" milliseconds=" + currentIntervalMillis);
+                        //Log.d("TrackingService", "speed="+speed+" milliseconds=" + currentIntervalMillis);
                     }
 
                     // Conditionally save to SQLite database if track recording is toggled on
                     if (accuracy < 10) {
                         if (isRecordingTracks && currentDBId != -1 && latitude != -1.0) {
-                            // Save this lat long for next time as lat long before
-                            latitude_before = latitude;
-                            longitude_before = longitude;
                             latitude = location.getLatitude();
                             longitude = location.getLongitude();
 
@@ -119,9 +116,9 @@ public class TrackingService extends Service {
                             }
 
                             // If the distance has not changed more than 3 meters, don't record the track segment
-                            //if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) >= 3.0)
-                            //    Log.d("TrackingService", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) + " milliseconds=" + currentIntervalMillis);
-                            if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) < 3.0)
+                            //if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) >= 2.0)
+                                Log.d("TrackingService", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, latitude, longitude) + " milliseconds=" + currentIntervalMillis);
+                            if (calculateDistance(latitude_before, longitude_before, latitude, longitude) < 2.0)
                                 return;
 
                             if (maxLat == -1.0) {
@@ -149,6 +146,8 @@ public class TrackingService extends Service {
                                     maxLat,
                                     currentDBId
                             );
+                            latitude_before = latitude;
+                            longitude_before = longitude;
 
                         } else {
                             latitude = location.getLatitude();

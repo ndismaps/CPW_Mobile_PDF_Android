@@ -42,19 +42,21 @@ import android.text.TextPaint;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.ActionMode;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.WindowMetrics;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.ProgressBar;
-import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -93,7 +95,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
-import java.util.Random;
 import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -104,13 +105,10 @@ import java.util.zip.ZipOutputStream;
 // upload a kmz file
 import java.io.BufferedInputStream;
 import java.io.FileInputStream;
-import java.io.IOException;
-import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 
-import org.w3c.dom.DOMException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -782,7 +780,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //
                     // Check if clicked on waypoint popup balloon of the single waypoint that is showing the balloon
                     //
-                    if (clickedWP != -1 && clickedWP < wayPts.size()) {
+                    if (clickedWP != -1 && clickedWP < wayPts.size() && numWayPtsTracksClicked == 1) {
                         wayPtX = (((wayPts.get(clickedWP).getX() - long1) / longDiff) * ((optimalPageWidth.get() * zoom) - marginx)) + marginL;
                         wayPtY = (((lat2 - wayPts.get(clickedWP).getY()) / latDiff) * ((optimalPageHeight.get() * zoom) - marginy)) + marginT;
                         Boolean continueProcessing;
@@ -792,7 +790,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //
                     // Check if clicked on track popup balloon of the single track that is showing the balloon
                     //
-                    if (tracks != null && tracks.size()>0 && clickedTrack != -1 && clickedTrack < tracks.size()) {
+                    if (tracks != null && tracks.size()>0 && clickedTrack != -1 && clickedTrack < tracks.size() && numWayPtsTracksClicked == 1) {
                         Boolean continueProcessing;
                         // convert lat, long to screen coordinates
                         float screenX = (float) ((((clickTrackX - long1) / longDiff) * ((optimalPageWidth.get() * zoom) - marginx)) + marginL);
@@ -841,7 +839,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                             found = true;
                             pdfView.invalidate();
                             //Log.d("onTap","Clicked on existing waypoint.");
-                            break;
+                            //break; // count all waypoints clicked on
                         }
                     }
 
@@ -850,7 +848,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         clickedTrack = -1; // tracks index
                         clickTrackX = -1.0;
                         clickTrackY = -1.0;
-                        boolean tFound = false;
+                        //boolean tFound = false;
                         for (var t = 0; t < tracks.size(); t++) {
                             //if (tFound) break;
                             Track track = tracks.get(t);
@@ -1195,6 +1193,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     if ((newWP || clickedWP != -1) && showAllWayPts && adjustWP == -1) {
                         //Log.d("PDFActivity", "onDraw: draw waypoint and popup balloon. newWP="+newWP+" clickedWP="+clickedWP);
                         if (clickedWP != -1 && clickedWP < wayPts.size()) {
+                          //  showOverlayMenu(new View(PDFActivity.this)); //TODO display multiple tracks and waypoints to edit
                             int i12 = clickedWP;
                             double xLong = wayPts.get(i12).getX();
                             double yLat = wayPts.get(i12).getY();
@@ -1211,6 +1210,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     // Draw popup if track was clicked on
                     if (tracks != null && tracks.size()>0 && (clickTrackX != -1.0) && showTracks && clickedTrack != -1 && clickedTrack < tracks.size()) {
                         //Log.d("PDFActivity", "onDraw: draw track and popup balloon. newWP="+newWP+" clickedWP="+clickedWP);
+                     //   showOverlayMenu(new View(PDFActivity.this)); //TODO display multiple tracks and waypoints to edit
                         String desc = tracks.get(clickedTrack).getDesc();
                         // convert lat (clickTrackY), long (clickTrackX) to screen coordinates, handling zoom
                         float x = (float) (((clickTrackX - long1) / longDiff) * (((optimalPageWidth.get() * zoom) - marginx)) + marginL);
@@ -2008,6 +2008,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                             loadNewMap(maps, mapIds.get(0));
                             Toast.makeText(PDFActivity.this,"Now showing adjacent map.",Toast.LENGTH_SHORT).show();
                         }*/
+                    // Adjacent Maps
                     if (!mapIds.isEmpty()) {
                         // Several maps found. Display button and menu to load new map.
                         //Toast.makeText(PDFActivity.this,"Several adjacent maps are available",Toast.LENGTH_SHORT).show();
@@ -3289,6 +3290,85 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             pdfView.invalidate();
         }
     };
+
+    // Select multiple tracks or waypoints, display popup edit, delete, move menu
+    private void showOverlayMenu(View anchorView) {
+        numWayPtsTracksClicked = 0;
+        LayoutInflater inflater = (LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+
+        View popupView = inflater.inflate(R.layout.popup_edit_menu_container, null);
+        LinearLayout container = popupView.findViewById(R.id.menu_container_for_popup_edit_menu);
+
+        // 1. Instantiate the PopupWindow (Passing true to Focusable enables outside-tap closing)
+        PopupWindow popupWindow = new PopupWindow(
+                popupView,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                true
+        );
+
+        String[] dynamicItems = {"Item Alpha", "Item Beta", "Item Gamma"};
+
+        TextView title = container.findViewById(R.id.menu_container_popup_title);
+        title.setText(numWayPtsTracksClicked + " Items Found:");
+        for (int i = 0; i < dynamicItems.length; i++) {
+            String labelText = dynamicItems[i];
+            View rowView = inflater.inflate(R.layout.menu_row_layout_for_popup_edit_menu, null);
+
+            TextView tvLabel = rowView.findViewById(R.id.menu_edit_popup_item_label);
+            Button btn1 = rowView.findViewById(R.id.menu_edit_popup_edit_btn_action);
+            Button btn2 = rowView.findViewById(R.id.menu_edit_popup_delete_btn_action);
+            Button btn3 = rowView.findViewById(R.id.menu_edit_popup_move_btn_action);
+
+            tvLabel.setText(labelText);
+
+            final int itemId = i;
+
+            // 2. Wrap click events to trigger your logic AND dismiss the overlay window
+            btn1.setOnClickListener(v -> {
+                //openEditTrackActivity(id);
+                handleButtonClick("Edit Button", itemId);
+                popupWindow.dismiss();
+            });
+
+            btn2.setOnClickListener(v -> {
+                handleButtonClick("Delete Button", itemId);
+                popupWindow.dismiss();
+            });
+
+            btn3.setOnClickListener(v -> {
+                handleButtonClick("Move Button", itemId);
+                popupWindow.dismiss();
+            });
+
+            container.addView(rowView);
+        }
+
+        // 3. Attach the dismiss listener to automatically clear the row views out of layout memory
+        popupWindow.setOnDismissListener(new PopupWindow.OnDismissListener() {
+            @Override
+            public void onDismiss() {
+                container.removeAllViews();
+                Toast.makeText(PDFActivity.this, "Menu closed. Rows cleared.", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        popupWindow.setElevation(20);
+        //popupWindow.showAsDropDown(anchorView, 0, 10);
+        // 2. Define the exact layout gravity placement
+        // TOP matches the coordinate system; CENTER_HORIZONTAL guarantees perfect horizontal alignment
+        int gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
+
+        // 3. Define the absolute screen placement coordinates
+        int xOffset = 0;   // 0 means perfectly centered horizontally due to CENTER_HORIZONTAL gravity
+        int yOffset = 300; // Position it 300 pixels down from the absolute top of the device screen
+
+        // 4. Show the popup window globally on the screen
+        popupWindow.showAtLocation(pdfView, gravity, xOffset, yOffset);
+    }
+    private void handleButtonClick(String buttonName, int itemId) {
+        Toast.makeText(this, buttonName + " clicked on Item ID: " + itemId, Toast.LENGTH_SHORT).show();
+    }
 
     // Delete Waypoint
     DialogInterface.OnClickListener dialogClickListener = new DialogInterface.OnClickListener() {
