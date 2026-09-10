@@ -53,7 +53,7 @@ android {
         minSdkVersion 23
         targetSdkVersion 36
         versionCode 78
-        versionName "1.9.4"
+        versionName "1.9.6"
         // History
         // v1.3.01 Removed asynctask
         // v1.3.02 Adjust waypoint on long click, added edit, move, delete buttons to top menu

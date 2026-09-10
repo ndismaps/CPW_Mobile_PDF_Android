@@ -49,6 +49,5 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_below="@+id/sortByDropDown"
-        android:layout_alignParentStart="false"
-        android:transcriptMode="alwaysScroll" />
+        android:layout_alignParentStart="false" />
 </RelativeLayout>

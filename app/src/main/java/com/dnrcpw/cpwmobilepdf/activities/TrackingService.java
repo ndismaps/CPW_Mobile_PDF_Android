@@ -71,7 +71,7 @@ public class TrackingService extends Service {
 
                 for (Location location : locationResult.getLocations()) {
                     // first time it is called use 1 second interval, then reset to walking speed and let it auto adjust
-                    if (firstTime){
+                    if (firstTime) {
                         firstTime = false;
                         currentIntervalMillis = 15000;
                         currentFastestIntervalMillis = 7000;
@@ -90,14 +90,19 @@ public class TrackingService extends Service {
                         //Log.d("TrackingService", "speed="+speed+" milliseconds=" + currentIntervalMillis);
                     }
 
-                    // Conditionally save to SQLite database if track recording is toggled on
+                    // Update location if accuracy is < 30 meters
                     if (accuracy < 10) {
+                        // Record Track: Conditionally save to SQLite database if track recording is toggled on
                         if (isRecordingTracks && currentDBId != -1 && latitude != -1.0) {
+                            if (latitude_before == -1) {
+                                latitude_before = latitude;
+                                longitude_before = longitude;
+                            }
                             latitude = location.getLatitude();
                             longitude = location.getLongitude();
 
                             // **Debug** make it simulate user movement to draw a track
-                            if (debug && latitude_before != -1.0) {
+                            if (debug) {
                                 Random rand = new Random();
                                 int randomInt = 1;
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
@@ -115,10 +120,12 @@ public class TrackingService extends Service {
                                 longitude = longitude_before + r;
                             }
 
-                            // If the distance has not changed more than 3 meters, don't record the track segment
-                            //if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) >= 2.0)
-                                Log.d("TrackingService", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, latitude, longitude) + " milliseconds=" + currentIntervalMillis);
-                            if (calculateDistance(latitude_before, longitude_before, latitude, longitude) < 2.0)
+                            // debug
+                            //if (calculateDistance(latitude_before, longitude_before, location.getLatitude(), location.getLongitude()) >= 3.0)
+                            //Log.d("TrackingService", "distance between lat,long in m=" + calculateDistance(latitude_before, longitude_before, latitude, longitude) + " milliseconds=" + currentIntervalMillis);
+
+                            // Return if they are standing still, change in distance is < 3 meters, 9 feet
+                            if (calculateDistance(latitude_before, longitude_before, latitude, longitude) < 3.0)
                                 return;
 
                             if (maxLat == -1.0) {
@@ -138,8 +145,6 @@ public class TrackingService extends Service {
                             dbHelper.updateTrack(
                                     latitude,
                                     longitude,
-                                    latitude_before,
-                                    longitude_before,
                                     minLong,
                                     maxLong,
                                     minLat,
@@ -148,26 +153,31 @@ public class TrackingService extends Service {
                             );
                             latitude_before = latitude;
                             longitude_before = longitude;
-
                         } else {
                             latitude = location.getLatitude();
                             longitude = location.getLongitude();
                         }
+
+
+                        // Create an intent with a custom action string to update current location/distance to map
+                        Intent intent = new Intent("ACTION_LOCATION_UPDATE");
+                        intent.putExtra("extra_latitude", latitude);
+                        intent.putExtra("extra_longitude", longitude);
+                        intent.putExtra("extra_latitude_before", latitude_before);
+                        intent.putExtra("extra_longitude_before", longitude_before);
+                        intent.putExtra("extra_altitude", altitude);
+                        intent.putExtra("extra_accuracy", accuracy);
+                        intent.putExtra("extra_bearing", bearing);
+                        intent.putExtra("extra_speed", speed);
+                        intent.putExtra("extra_minLong", minLong);
+                        intent.putExtra("extra_maxLong", maxLong);
+                        intent.putExtra("extra_minLat", minLat);
+                        intent.putExtra("extra_maxLat", maxLat);
+
+                        // Broadcast to the system (restricted to your app package for security)
+                        intent.setPackage(getPackageName());
+                        sendBroadcast(intent);
                     }
-
-                    // Create an intent with a custom action string to update current location/distance to map
-                    Intent intent = new Intent("ACTION_LOCATION_UPDATE");
-                    intent.putExtra("extra_latitude", latitude);
-                    intent.putExtra("extra_longitude", longitude);
-                    intent.putExtra("extra_latitude_before", latitude_before);
-                    intent.putExtra("extra_longitude_before", longitude_before);
-                    intent.putExtra("extra_altitude", altitude);
-                    intent.putExtra("extra_accuracy", accuracy);
-                    intent.putExtra("extra_bearing", bearing);
-
-                    // Broadcast to the system (restricted to your app package for security)
-                    intent.setPackage(getPackageName());
-                    sendBroadcast(intent);
                 }
             }
         };
@@ -236,6 +246,8 @@ public class TrackingService extends Service {
                 maxLong = -1.0;
                 minLat = -1.0;
                 maxLat = -1.0;
+                latitude_before = -1;
+                longitude_before = -1;
                 updateNotificationText();
             } else {
                 // Check if the Intent contains custom interval update instructions

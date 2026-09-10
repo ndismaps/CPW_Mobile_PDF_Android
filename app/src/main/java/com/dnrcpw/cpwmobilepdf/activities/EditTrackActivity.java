@@ -211,11 +211,11 @@ public class EditTrackActivity extends AppCompatActivity{
             // display alert dialog
             AlertDialog.Builder builder = new AlertDialog.Builder(EditTrackActivity.this);
             builder.setTitle("Delete");
-            builder.setMessage("Delete this waypoint?").setPositiveButton("DELETE", dialogClickListener)
+            builder.setMessage("Delete this track?").setPositiveButton("DELETE", dialogClickListener)
                     .setNegativeButton("CANCEL", dialogClickListener).show();
             return true;
         } else if (item.getItemId() == R.id.save) {
-            // rename map
+            // rename track
             String name = editTxt.getText().toString();
             if (name.isEmpty()) {
                 Toast.makeText(EditTrackActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
@@ -249,7 +249,6 @@ public class EditTrackActivity extends AppCompatActivity{
     @Override
     protected void onResume(){
         super.onResume();
-
     }
     @Override
     protected void onStop(){

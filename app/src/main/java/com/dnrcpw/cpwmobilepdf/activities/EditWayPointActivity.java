@@ -87,7 +87,7 @@ public class EditWayPointActivity extends AppCompatActivity {
                 timeStamp.setText(wayPt.getTime());
                 location = findViewById(R.id.wayLocation);
                 location.setText(wayPt.getLocation());
-                pinColorGrp = findViewById(R.id.trackColor);
+                pinColorGrp = findViewById(R.id.pinColor);
                 String pinColor = wayPt.getColorName();
                 cyanBtn = findViewById(R.id.cyanPin);
                 redBtn = findViewById(R.id.redPin);
@@ -202,7 +202,7 @@ public class EditWayPointActivity extends AppCompatActivity {
                     .setNegativeButton("CANCEL", dialogClickListener).show();
             return true;
         } else if (item.getItemId() == R.id.save) {
-            // rename map
+            // rename waypoint
             String name = editTxt.getText().toString();
             if (name.equals("")) {
                 Toast.makeText(EditWayPointActivity.this, "Cannot rename to blank!", Toast.LENGTH_LONG).show();
@@ -233,6 +233,10 @@ public class EditWayPointActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    protected void onResume(){
+        super.onResume();
+    }
     @Override
     protected void onStop(){
         super.onStop();

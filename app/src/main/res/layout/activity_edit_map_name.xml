@@ -60,7 +60,7 @@
                     android:paddingTop="12dp"
                     android:paddingEnd="24dp"
                     android:paddingBottom="12dp"
-                    android:src="@android:drawable/ic_notification_clear_all" />
+                    android:src="@android:drawable/ic_menu_close_clear_cancel" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 

@@ -326,7 +326,9 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
             ToastUtils.showExtendedToast(PDFActivity.this,"No GPS Service, cannot show you location.");
             return;
         }
-        //distanceTextView = findViewById(R.id.distance_text_view); // display distance traveled on current track
+        // debug text view
+        distanceTextView = findViewById(R.id.distance_text_view); // display distance traveled on current track
+
         wait = findViewById(R.id.loadingPanel);
         wait.setVisibility(View.VISIBLE);
         latNow = -1.0;
@@ -780,7 +782,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //
                     // Check if clicked on waypoint popup balloon of the single waypoint that is showing the balloon
                     //
-                    if (clickedWP != -1 && clickedWP < wayPts.size() && numWayPtsTracksClicked == 1) {
+                    if (clickedWP != -1 && clickedWP < wayPts.size()){ // && numWayPtsTracksClicked == 1) { TODO: check for multiple items clicked on and display menu
                         wayPtX = (((wayPts.get(clickedWP).getX() - long1) / longDiff) * ((optimalPageWidth.get() * zoom) - marginx)) + marginL;
                         wayPtY = (((lat2 - wayPts.get(clickedWP).getY()) / latDiff) * ((optimalPageHeight.get() * zoom) - marginy)) + marginT;
                         Boolean continueProcessing;
@@ -790,7 +792,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                     //
                     // Check if clicked on track popup balloon of the single track that is showing the balloon
                     //
-                    if (tracks != null && tracks.size()>0 && clickedTrack != -1 && clickedTrack < tracks.size() && numWayPtsTracksClicked == 1) {
+                    if (tracks != null && tracks.size()>0 && clickedTrack != -1 && clickedTrack < tracks.size()) { // && numWayPtsTracksClicked == 1) { TODO: check for multiple items clicked on and display menu
                         Boolean continueProcessing;
                         // convert lat, long to screen coordinates
                         float screenX = (float) ((((clickTrackX - long1) / longDiff) * ((optimalPageWidth.get() * zoom) - marginx)) + marginL);
@@ -848,16 +850,22 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                         clickedTrack = -1; // tracks index
                         clickTrackX = -1.0;
                         clickTrackY = -1.0;
-                        //boolean tFound = false;
+                        double shortestDist = -1.0;
+                        // convert x,y in pixels to long, lat
+                        double xLong = (double) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
+                        double yLat = (double) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
+
+                        // search through every track and segment to find the closest track that is less than checkDistance in pixels
                         for (var t = 0; t < tracks.size(); t++) {
-                            //if (tFound) break;
                             Track track = tracks.get(t);
-                            double xLong = (double) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
-                            double yLat = (double) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
+
+                            //Log.d("latlong", "bounds: "+track.getMinLong()+" < "+xLong+" < "+track.getMaxLong()+" && "+track.getMinLat()+" < "+yLat+" < "+track.getMaxLat());
 
                             // see if map click is inside bounding box of track
                             if (xLong >= track.getMinLong() && xLong <= track.getMaxLong() &&
                                 yLat >= track.getMinLat() && yLat <= track.getMaxLat()) {
+
+                                // loop through each segment of this track
                                 for (var s = 0; s < tracks.get(t).getTrackSegments().size(); s++) {
                                     TrackSegment segment = track.getTrackSegments().get(s);
                                     if (segment != null) {
@@ -868,21 +876,25 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                                 segment.getX2(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get()),
                                                 segment.getY2(zoom, marginx, marginL, lat2, latDiff, optimalPageHeight.get()));
                                         dist = (double) Math.sqrt(dist); // square root
-                                        Log.d("distance", "distance squared " + dist + " zoom=" + zoom);
+
                                         int checkDistance = 100;
-                                        if (zoom <= 2) checkDistance = 100;
-                                        else if (zoom <= 5) checkDistance = 200;
-                                        else if (zoom <= 10) checkDistance = 300;
-                                        else if (zoom <= 15) checkDistance = 400;
+                                        if (zoom <= 2.0) checkDistance = 100;
+                                        else if (zoom <= 5.0) checkDistance = 200;
+                                        else if (zoom <= 10.0) checkDistance = 300;
+                                        else if (zoom <= 15.0) checkDistance = 400;
+                                        else if (zoom <= 25.0) checkDistance = 500;
+
                                         if (dist < checkDistance) {
                                             // show popup for track
+                                            // check if last one found was closer
+                                            if (shortestDist != -1.0 && dist > shortestDist) continue;
                                             clickedTrack = t; // tracks index
                                             numWayPtsTracksClicked++;
                                             // convert screen coordinates to lat, long
                                             clickTrackX = xLong; //(double) (( ((x - marginL) / ((optimalPageWidth.get() * zoom) - marginx)) * longDiff) + long1);
                                             clickTrackY = yLat; //(double) (-1 * (( ((y - marginT) / ((optimalPageHeight.get() * zoom) - marginy)) * latDiff) - lat2));
-                                            //tFound = true;
-                                            //break;
+                                            shortestDist = dist; // save the shortest distance
+                                            //Log.d("distance", "dist " + dist + " tk "+(t+1)+" zoom=" + zoom);
                                         }
                                     }
                                 }
@@ -1090,6 +1102,18 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                     break;
                             }
 
+                            // debug draw min max lat long. Convert lat long to screen pixels
+                            double minlong = ((currentTrack.getMinLong() - long1) / longDiff) * ((optimalPageWidth.get() * zoom) - marginx) + marginL;
+                            double minlat = (((lat2 - currentTrack.getMinLat()) / latDiff) * ((optimalPageHeight.get() * zoom) - marginy)) + marginT;
+                            double maxlong = ((currentTrack.getMaxLong() - long1) / longDiff) * ((optimalPageWidth.get() * zoom) - marginx) + marginL;
+                            double maxlat = (((lat2 - currentTrack.getMaxLat()) / latDiff) * ((optimalPageHeight.get() * zoom) - marginy)) + marginT;
+                            canvas.translate(0, 0);
+                            canvas.drawCircle((float)minlong+5f,(float)minlat+5f,14f, green);
+                            canvas.drawCircle((float)maxlong+5f,(float)maxlat+5f,14f, green);
+                            canvas.drawCircle((float)minlong+5f,(float)maxlat+5f,14f, green);
+                            canvas.drawCircle((float)maxlong+5f,(float)minlat+5f,14f, green);
+                            canvas.translate(0, 0);
+
                             // Add to the current track's path with current location if on map
                             /*if (latBefore != -1 && currentTrackID != -1 && t == currentTrackID &&
                                     (latNow >= lat1 && latNow <= lat2) &&
@@ -1097,6 +1121,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                                 currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
                             }*/
                             // Draw all tracks
+
                             List<TrackSegment> segments = currentTrack.getTrackSegments();
                             for (int i = 0; i < currentTrack.getTrackSegments().size(); i++) {
                                 canvas.drawLine((float)(segments.get(i).getX1(zoom, marginx, marginL, long1, longDiff, optimalPageWidth.get())),
@@ -1842,7 +1867,7 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
     @Override
     protected void onStart() {
         super.onStart();
-        // 2. Bind to the service when the activity becomes visible
+        // Bind to the location service when the activity becomes visible
         Intent intent = new Intent(this, TrackingService.class);
         bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
@@ -1873,52 +1898,33 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
         public void onReceive(Context context, Intent intent) {
             if (intent != null && "ACTION_LOCATION_UPDATE".equals(intent.getAction())) {
 
-                //latBefore = latNow;
-                //longBefore = longNow;
-
                 latNow = intent.getDoubleExtra("extra_latitude", 0.0);
                 longNow = intent.getDoubleExtra("extra_longitude", 0.0);
                 // save last location so we can see how much they moved
                 longBefore = intent.getDoubleExtra("extra_longitude_before", -1.0);
                 latBefore = intent.getDoubleExtra("extra_latitude_before", -1.0);
                 accuracy = intent.getFloatExtra("extra_accuracy", 0.0f);
+                double speed = intent.getFloatExtra("extra_speed", 0.0f);
+
 
                 // Add to the current track's path with current location if on map
-                if (latBefore != -1 && currentTrackID != -1 &&
-                        (latNow >= lat1 && latNow <= lat2) &&
-                        (longNow >= long1 && longNow <= long2)) {
+                // and if accuracy is less than 10 meters. Change in TrackingService aslo!
+                if (accuracy < 10 && latBefore != -1 && currentTrackID != -1 &&
+                    (latNow >= lat1 && latNow <= lat2) &&
+                    (longNow >= long1 && longNow <= long2)) {
 
-                    // Update display if accuracy is less than 10 meters
-                    if (accuracy < 10) {
-                        Track currentTrack = tracks.get(currentTrackID);
-                        Log.d("TrackingService", "currentTrackID=" + currentTrackID + " " + longBefore + " " + latBefore + " " + longNow + " " + latNow);
-                        currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
-                        // update min max lat and long
-                        if (currentTrack.getMaxLat() == -1.0) {
-                            currentTrack.setMinLong(longNow);
-                            currentTrack.setMaxLong(longNow);
-                            currentTrack.setMinLat(latNow);
-                            currentTrack.setMaxLat(latNow);
-                        }
-                        if (longNow < currentTrack.getMinLong()) {
-                            currentTrack.setMinLong(longNow);
-                        }
-                        if (longNow > currentTrack.getMaxLong()) {
-                            currentTrack.setMaxLong(longNow);
-                        }
-                        if (latNow < currentTrack.getMinLat()) {
-                            currentTrack.setMinLat(latNow);
-                        }
-                        if (latNow > currentTrack.getMaxLat()) {
-                            currentTrack.setMaxLat(latNow);
-                        }
-                        // Save new line segment in database - handled in TrackingService
-                        // Handled in TrackingService onLocationResult
-                        //dbExecutor.execute(() -> {
-                        //    DBHandler db = DBHandler.getInstance(PDFActivity.this);
-                        //    db.updateTrack(currentTrack);
-                        //});
-                    }
+                    // DEBUG display speed and accuracy
+                    speed = speed * 2.23694;
+                    distanceTextView.setText(String.format("%.0f", speed)+"mph, accuaracy "+String.format("%.0f",accuracy)+"m");
+
+                    Track currentTrack = tracks.get(currentTrackID);
+                    Log.d("TrackingService", "currentTrackID=" + currentTrackID + " " + longBefore + " " + latBefore + " " + longNow + " " + latNow);
+                    currentTrack.addTrackSegment((float) longBefore, (float) latBefore, (float) longNow, (float) latNow);
+                    // update min, max, lat and long
+                    currentTrack.setMinLong(intent.getDoubleExtra("extra_minLong", -1.0));
+                    currentTrack.setMaxLong(intent.getDoubleExtra("extra_maxLong", -1.0));
+                    currentTrack.setMinLat(intent.getDoubleExtra("extra_minLat", -1.0));
+                    currentTrack.setMaxLat(intent.getDoubleExtra("extra_maxLat", -1.0));
                 }
 
                 //bearing = location.getBearing(); // 0-360 degrees 0 at North
@@ -1958,10 +1964,10 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                 //
                 double quarterMileInDegrees = 0.00458; // 1 degree = 54.6 miles
                 if (loadAdjacentMaps &&
-                        latNow > (lat1 - quarterMileInDegrees) &&
-                        latNow < (lat2 + quarterMileInDegrees) &&
-                        longNow > (long1 - quarterMileInDegrees) &&
-                        longNow < (long2 + quarterMileInDegrees)){
+                    latNow > (lat1 - quarterMileInDegrees) &&
+                    latNow < (lat2 + quarterMileInDegrees) &&
+                    longNow > (long1 - quarterMileInDegrees) &&
+                    longNow < (long2 + quarterMileInDegrees)){
                     // Get list of all available maps and see if the current location is on or within a 1/4 mile of one or more of them
                     ArrayList<Integer> mapIds = new ArrayList<>();// PDF maps that the current location is on
                     if (maps == null) return;
@@ -2000,14 +2006,14 @@ public class PDFActivity extends AppCompatActivity implements SensorEventListene
                             mapIds.add(i);
                         }
                     }
-                        /*if (mapIds.size()==0){
-                            //Toast.makeText(PDFActivity.this,"No adjacent maps found to load.",Toast.LENGTH_SHORT).show();
-                        }
-                        /*else if (mapIds.size()==1){
-                            // Only one map found that contains the current location. Load it.
-                            loadNewMap(maps, mapIds.get(0));
-                            Toast.makeText(PDFActivity.this,"Now showing adjacent map.",Toast.LENGTH_SHORT).show();
-                        }*/
+                    /*if (mapIds.size()==0){
+                        //Toast.makeText(PDFActivity.this,"No adjacent maps found to load.",Toast.LENGTH_SHORT).show();
+                    }
+                    /*else if (mapIds.size()==1){
+                        // Only one map found that contains the current location. Load it.
+                        loadNewMap(maps, mapIds.get(0));
+                        Toast.makeText(PDFActivity.this,"Now showing adjacent map.",Toast.LENGTH_SHORT).show();
+                    }*/
                     // Adjacent Maps
                     if (!mapIds.isEmpty()) {
                         // Several maps found. Display button and menu to load new map.

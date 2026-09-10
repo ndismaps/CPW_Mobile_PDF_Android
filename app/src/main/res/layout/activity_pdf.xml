@@ -72,13 +72,14 @@
       android:text="@string/load_adjacent_maps"
       android:textColor="#212121"
       android:visibility="gone" />
-  <!--TextView
+  <!-- debug text view -->
+  <TextView
       android:id="@+id/distance_text_view"
-      android:layout_width="100dp"
+      android:layout_width="300dp"
       android:layout_height="20dp"
       android:layout_alignParentBottom="true"
       android:layout_alignParentEnd="true"
       android:text="Distance traveled"
-      android:textColor="#212121"/-->
+      android:textColor="#212121"/>
 
 </RelativeLayout>

@@ -18,10 +18,7 @@ import com.dnrcpw.cpwmobilepdf.model.WayPt;
 import com.dnrcpw.cpwmobilepdf.model.WayPts;
 
 import java.io.File;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.Locale;
 
 /**
@@ -113,9 +110,7 @@ public class DBHandler extends SQLiteOpenHelper {
                      String selectQuery = "SELECT * FROM " + TABLE_MAPS;
                      Cursor cursor = db1.rawQuery(selectQuery, null);
                      if (cursor.getColumnCount() == 7){
-                         if (cursor != null) {
-                             cursor.close();
-                         }
+                         cursor.close();
                          db1.execSQL("ALTER TABLE " + TABLE_MAPS + " ADD COLUMN " + KEY_FILESIZE + " TEXT");
                          db1.execSQL("ALTER TABLE " + TABLE_MAPS + " ADD COLUMN " + KEY_DISTTOMAP + " TEXT");
                          db1.execSQL("UPDATE " + TABLE_MAPS + " SET " + KEY_FILESIZE + " = ''");
@@ -164,17 +159,15 @@ public class DBHandler extends SQLiteOpenHelper {
                      String selectQuery1 = "SELECT * FROM " + TABLE_TRACKS;
                      Cursor cursor1 = db1.rawQuery(selectQuery1, null);
                      if (cursor1.getColumnCount() == 6) {
-                         if (cursor1 != null) {
-                             cursor1.close();
-                         }
-                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MINLAT + " REAL");
-                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MINLAT + " = -1.0");
-                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MAXLAT + " REAL");
-                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MAXLAT + " = -1.0");
+                         cursor1.close();
                          db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MINLONG + " REAL");
                          db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MINLONG + " = -1.0");
                          db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MAXLONG + " REAL");
                          db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MAXLONG + " = -1.0");
+                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MINLAT + " REAL");
+                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MINLAT + " = -1.0");
+                         db1.execSQL("ALTER TABLE " + TABLE_TRACKS + " ADD COLUMN " + KEY_MAXLAT + " REAL");
+                         db1.execSQL("UPDATE " + TABLE_TRACKS + " SET " + KEY_MAXLAT + " = -1.0");
                      }
              }
         }
@@ -196,31 +189,31 @@ public class DBHandler extends SQLiteOpenHelper {
             oldDb = SQLiteDatabase.openDatabase(oldDbFile.getPath(), null, SQLiteDatabase.OPEN_READONLY);
             cursor = oldDb.query(tableName, null, null, null, null, null, null);
 
-            if (cursor != null) {
-                while (cursor.moveToNext()) {
-                    ContentValues cv = new ContentValues();
+            while (cursor.moveToNext()) {
+                ContentValues cv = new ContentValues();
 
-                    // Dynamically map all columns for this row from old DB to new DB
-                    for (int i = 0; i < cursor.getColumnCount(); i++) {
-                        String columnName = cursor.getColumnName(i);
-                        switch (cursor.getType(i)) {
-                            case Cursor.FIELD_TYPE_INTEGER:
-                                cv.put(columnName, cursor.getLong(i));
-                                break;
-                            case Cursor.FIELD_TYPE_FLOAT:
-                                cv.put(columnName, cursor.getDouble(i));
-                                break;
-                            case Cursor.FIELD_TYPE_STRING:
-                                cv.put(columnName, cursor.getString(i));
-                                break;
-                            case Cursor.FIELD_TYPE_BLOB:
-                                cv.put(columnName, cursor.getBlob(i));
-                                break;
-                        }
+                // Dynamically map all columns for this row from old DB to new DB
+                for (int i = 0; i < cursor.getColumnCount(); i++) {
+                    String columnName = cursor.getColumnName(i);
+                    switch (cursor.getType(i)) {
+                        case Cursor.FIELD_TYPE_INTEGER:
+                            cv.put(columnName, cursor.getLong(i));
+                            break;
+                        case Cursor.FIELD_TYPE_FLOAT:
+                            cv.put(columnName, cursor.getDouble(i));
+                            break;
+                        case Cursor.FIELD_TYPE_STRING:
+                            cv.put(columnName, cursor.getString(i));
+                            break;
+                        case Cursor.FIELD_TYPE_BLOB:
+                            cv.put(columnName, cursor.getBlob(i));
+                            break;
+                        case Cursor.FIELD_TYPE_NULL:
+                            break;
                     }
-                    // Insert the row directly into the current unified database file
-                    currentDb.insert(tableName, null, cv);
                 }
+                // Insert the row directly into the current unified database file
+                currentDb.insert(tableName, null, cv);
             }
 
             // Step C: Delete the old file from the disk now that data is copied
@@ -282,13 +275,17 @@ public class DBHandler extends SQLiteOpenHelper {
         Cursor cursor = db.query(TABLE_MAPS, new String[]{KEY_ID, KEY_PATH, KEY_BOUNDS, KEY_MEDIABOX, KEY_VIEWPORT, KEY_THUMBNAIL, KEY_NAME, KEY_FILESIZE, KEY_DISTTOMAP, KEY_MAP_ORIENTATION}, KEY_NAME + "=?",
                 new String[]{mapName}, null, null, null, null);
         if (cursor.moveToFirst()){
-            PDFMap map = new PDFMap(cursor.getString(1), cursor.getString(2), cursor.getString(3),
-                    cursor.getString(4),cursor.getString(5), cursor.getString(6),
-                    cursor.getString (7), cursor.getString(8),cursor.getString(9));
+            PDFMap map = new PDFMap(cursor.getString(cursor.getColumnIndexOrThrow(KEY_PATH)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_BOUNDS)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_MEDIABOX)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_VIEWPORT)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_THUMBNAIL)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_NAME)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_FILESIZE)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_DISTTOMAP)),
+                    cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAP_ORIENTATION)));
             map.setId(Integer.parseInt(cursor.getString(0)));
-            if (cursor != null) {
-                cursor.close();
-            }
+            cursor.close();
             return map;
         }
         return null;
@@ -307,15 +304,15 @@ public class DBHandler extends SQLiteOpenHelper {
         if (cursor.moveToFirst()) {
             do {
                 PDFMap map = new PDFMap();
-                map.setId(Integer.parseInt(cursor.getString(0)));
-                map.setPath(cursor.getString(1));
-                map.setBounds(cursor.getString(2));
-                map.setMediabox(cursor.getString(3));
-                map.setViewport(cursor.getString(4));
+                map.setId(Integer.parseInt(cursor.getString(cursor.getColumnIndexOrThrow(KEY_ID))));
+                map.setPath(cursor.getString(cursor.getColumnIndexOrThrow(KEY_PATH)));
+                map.setBounds(cursor.getString(cursor.getColumnIndexOrThrow(KEY_BOUNDS)));
+                map.setMediabox(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MEDIABOX)));
+                map.setViewport(cursor.getString(cursor.getColumnIndexOrThrow(KEY_VIEWPORT)));
                 // thumbnail was saved to a file, get the path
-                map.setThumbnail(cursor.getString(5));
-                map.setName(cursor.getString(6));
-                map.setFileSize(cursor.getString(7));
+                map.setThumbnail(cursor.getString(cursor.getColumnIndexOrThrow(KEY_THUMBNAIL)));
+                map.setName(cursor.getString(cursor.getColumnIndexOrThrow(KEY_NAME)));
+                map.setFileSize(cursor.getString(cursor.getColumnIndexOrThrow(KEY_FILESIZE)));
                 if (map.getFileSize().equals("")) {
                     try {
                         File file = new File(map.getPath());
@@ -332,7 +329,7 @@ public class DBHandler extends SQLiteOpenHelper {
                         map.setFileSize("");
                     }
                 }
-                map.setDistToMap(cursor.getString(8));
+                map.setDistToMap(cursor.getString(cursor.getColumnIndexOrThrow(KEY_DISTTOMAP)));
                 if (map.getDistToMap().isEmpty()) {
                     map.setMiles(0.0);
                 } else {
@@ -342,14 +339,12 @@ public class DBHandler extends SQLiteOpenHelper {
                         map.setMiles(-999.99);
                     }
                 }
-                map.setMapOrientation(cursor.getString(9));
+                map.setMapOrientation(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAP_ORIENTATION)));
                 // Adding map to list
                 mapList.add(map);
             } while (cursor.moveToNext());
         }
-        if (cursor != null) {
-            cursor.close();
-        }
+        cursor.close();
         // return map list
         return mapList;
     }
@@ -423,9 +418,7 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             load_adj_maps = Integer.parseInt(cursor.getString(0));
-            if (cursor != null) {
-                cursor.close();
-            }
+            cursor.close();
             return load_adj_maps;
         }
         else {
@@ -454,9 +447,7 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             show = Integer.parseInt(cursor.getString(0));
-            if (cursor != null) {
-                cursor.close();
-            }
+            cursor.close();
             return show;
         }
         else {
@@ -485,9 +476,7 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             show = Integer.parseInt(cursor.getString(0));
-            if (cursor != null) {
-                cursor.close();
-            }
+            cursor.close();
             return show;
         }
         else {
@@ -516,9 +505,7 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             show = Integer.parseInt(cursor.getString(0));
-            if (cursor != null) {
-                cursor.close();
-            }
+            cursor.close();
             return show;
         }
         else {
@@ -549,9 +536,7 @@ public class DBHandler extends SQLiteOpenHelper {
         // Only one record
         if (cursor.moveToFirst()) {
             order = cursor.getString(0);
-            if (cursor != null) {
-                cursor.close();
-            }
+            cursor.close();
             return order;
         }
         else {
@@ -574,7 +559,7 @@ public class DBHandler extends SQLiteOpenHelper {
         db1.execSQL(CREATE_TRACKS_TABLE);
     }
 
-    public synchronized void updateTrack(double latitude, double longitude, double latitude_before, double longitude_before, double minLong, double maxLong, double minLat, double maxLat, long currentDBId){
+    public synchronized void updateTrack(double latitude, double longitude, double minLong, double maxLong, double minLat, double maxLat, long currentDBId){
         // save the line segments when app is in the background and foreground
         // Called by TrackingService
         String lineSegments = "";
@@ -582,12 +567,10 @@ public class DBHandler extends SQLiteOpenHelper {
         SQLiteDatabase db = this.getWritableDatabase();
         Cursor cursor = db.query(TABLE_TRACKS, new String[]{KEY_LINE_SEGMENTS}, KEY_ID + "=?",
                 new String[]{String.valueOf(currentDBId)}, null, null, null, null);
-        if (cursor != null) {
-            if (cursor.moveToFirst()) {
-                lineSegments = cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS));
-            }
-            cursor.close(); // Crucial to close cursor to avoid memory leaks
+        if (cursor.moveToFirst()) {
+            lineSegments = cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS));
         }
+        cursor.close(); // Crucial to close cursor to avoid memory leaks
         if (!lineSegments.isEmpty()) lineSegments += ",";
         lineSegments = lineSegments+longitude+","+latitude;
 
@@ -601,6 +584,7 @@ public class DBHandler extends SQLiteOpenHelper {
         // Update line segments
         db.update(TABLE_TRACKS, values,KEY_ID + " = ?",
                 new String[]{ String.valueOf(currentDBId) });
+        Log.d("updateTrack", "minLong="+minLong+" maxLong="+maxLong);
     }
 
     public long addTrack(Track track) throws SQLException {
@@ -631,6 +615,7 @@ public class DBHandler extends SQLiteOpenHelper {
         values.put(KEY_MAXLONG,track.getMaxLong());
         values.put(KEY_MINLAT,track.getMinLat());
         values.put(KEY_MAXLAT,track.getMaxLat());
+
         // updating row
         return db.update(TABLE_TRACKS, values, KEY_ID + " = ?",
                 new String[]{ String.valueOf(track.getId()) });
@@ -677,24 +662,33 @@ public class DBHandler extends SQLiteOpenHelper {
                 // Make sure this track has at least 2 line segments and a mapName
                 // count number of commas. A point has 1.
                 long count = 0;
-                if (!cursor.getString(3).isEmpty()) {
+                if (!cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS)).isEmpty()) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                        count = cursor.getString(3).chars()
+                        count = cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS)).chars()
                                 .filter(ch -> ch == ',')
                                 .count();
                     } else {
                         int index = 0;
-                        index = cursor.getString(3).indexOf(",", index);
+                        index = cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS)).indexOf(",", index);
                         if (index != -1) count++;
-                        index = cursor.getString(3).indexOf(",", index + 1);
+                        index = cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS)).indexOf(",", index + 1);
                         if (index != -1) count++;
                     }
                 }
-                if (count == 1 || cursor.getString(3).isEmpty() || cursor.getString(1).isEmpty())
-                    deleteIds.add(cursor.getInt(0));
+                if (count == 1 || cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS)).isEmpty() || cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAPNAME)).isEmpty())
+                    deleteIds.add(Integer.parseInt(cursor.getString(cursor.getColumnIndexOrThrow(KEY_ID))));
                 // Adding track to list if matches name
                 else if (mapName.equals(cursor.getString(1))) {
-                    trackList.add(Integer.parseInt(cursor.getString(0)), cursor.getString(1), cursor.getString(2), cursor.getString(3), cursor.getString(4), cursor.getString(5), cursor.getDouble(6), cursor.getDouble(7), cursor.getDouble(8), cursor.getDouble(9));
+                    trackList.add(Integer.parseInt(cursor.getString(cursor.getColumnIndexOrThrow(KEY_ID))),
+                        cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAPNAME)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(KEY_DESC)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(KEY_LINE_SEGMENTS)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(KEY_COLOR)),
+                        cursor.getString(cursor.getColumnIndexOrThrow(KEY_TIME)),
+                        Double.parseDouble(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MINLONG))),
+                        Double.parseDouble(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAXLONG))),
+                        Double.parseDouble(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MINLAT))),
+                        Double.parseDouble(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAXLAT))));
                 }
             } while (cursor.moveToNext());
         }
@@ -786,8 +780,10 @@ public class DBHandler extends SQLiteOpenHelper {
             if (cursor.moveToFirst()) {
                 do {
                     // Add mapName to list
-                    if (!list.contains(cursor.getString(1)))
-                        list.add(cursor.getString(1));
+                    if (!list.contains(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAPNAME))))
+                        list.add(cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAPNAME)));
+                    //if (!list.contains(cursor.getString(1)))
+                    //    list.add(cursor.getString(1));
                 } while (cursor.moveToNext());
             }
             cursor.close();
@@ -811,7 +807,14 @@ public class DBHandler extends SQLiteOpenHelper {
             do {
                 // Adding waypoint to list if matches name
                 if (mapName.equals(cursor.getString(1)))
-                    wayPtsList.add(Integer.parseInt(cursor.getString(0)),cursor.getString(1),cursor.getString(2),cursor.getFloat(3),cursor.getFloat(4),cursor.getString(5),cursor.getString(6),cursor.getString(7));
+                    wayPtsList.add(Integer.parseInt(cursor.getString(cursor.getColumnIndexOrThrow(KEY_ID))),
+                            cursor.getString(cursor.getColumnIndexOrThrow(KEY_MAPNAME)),
+                            cursor.getString(cursor.getColumnIndexOrThrow(KEY_DESC)),
+                            cursor.getFloat(cursor.getColumnIndexOrThrow(KEY_X)),
+                            cursor.getFloat(cursor.getColumnIndexOrThrow(KEY_Y)),
+                            cursor.getString(cursor.getColumnIndexOrThrow(KEY_COLOR)),
+                            cursor.getString(cursor.getColumnIndexOrThrow(KEY_TIME)),
+                            cursor.getString(cursor.getColumnIndexOrThrow(KEY_LOCATION)));
 
             } while (cursor.moveToNext());
         }

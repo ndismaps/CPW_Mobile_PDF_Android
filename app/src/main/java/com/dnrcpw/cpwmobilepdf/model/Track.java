@@ -38,7 +38,7 @@ public class Track {
         this.time = formattedDate.format(date);
     }
 
-    public Track(int id, String mapName, String desc, String trackSegments, String colorName, String time){
+    public Track(int id, String mapName, String desc, String trackSegments, String colorName, String time, double minLong, double maxLong, double minLat, double maxLat){
         // Called by Tracks/add and DBTrackHandler/getTracks to read the tracks from the database and fill the tracks ArrayList
         if (trackSegments.equals("")){
             this.trackSegments = null;
@@ -60,6 +60,10 @@ public class Track {
         this.desc = desc;
         this.colorName = colorName;
         this.time = time;
+        this.minLong = minLong;
+        this.maxLong = maxLong;
+        this.minLat = minLat;
+        this.maxLat = maxLat;
     }
     public String getLineSegments(){
         // DBTrackHandler calls this to store it in the database as a string of comma-delimited lat, long points

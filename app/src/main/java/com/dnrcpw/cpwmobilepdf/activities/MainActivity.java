@@ -71,8 +71,8 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     private static final int FOREGROUND_REQUEST_CODE = 1001;
     //private static final int BACKGROUND_REQUEST_CODE = 1002;
     private LocationUpdateReceiver locationReceiver;
-    double latNow, latBefore = 0.0;
-    double longNow, longBefore = 0.0;
+    double latNow, latBefore = -1.0;
+    double longNow, longBefore = -1.0;
     double updateProximityDist = 160.9344; // default change in distance that triggers updating proximity .1 miles
     Spinner sortByDropdown;
     TextView sortTitle;
@@ -133,10 +133,6 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             // set on click functions: onItemSelected and nothingSelected (must have these names)
             sortByDropdown.setOnItemSelectedListener(this);
             sortFlag = true;
-
-            // Used to keep track of user movement
-            //latBefore = 0.0;
-            //longBefore = 0.0;
 
             // FLOATING ACTION BUTTON CLICK
             FloatingActionButton fab = findViewById(R.id.fab);
@@ -329,120 +325,114 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent != null && "ACTION_LOCATION_UPDATE".equals(intent.getAction())) {
-                latNow = intent.getDoubleExtra("extra_latitude", 0.0);
-                longNow = intent.getDoubleExtra("extra_longitude", 0.0);
-                float accuracy = intent.getFloatExtra("extra_accuracy", 0.0f); // Read accuracy
+                latNow = intent.getDoubleExtra("extra_latitude", -1.0);
+                longNow = intent.getDoubleExtra("extra_longitude", -1.0);
+                float accuracy = intent.getFloatExtra("extra_accuracy", 0.0f); // Read accuracy in meters
 
                 try {
-                        // Update UI with location data
-                        float[] results = new float[1];
-                        //latNow = location.getLatitude();
-                        //longNow = location.getLongitude(); // make it positive
+                    // Update UI with location data
+                    float[] results = new float[1];
 
-                        // for debugging ****************
-                        //latBefore = latBefore + .5;
-                        //longBefore = longBefore -.2;
+                    if (myAdapter == null) return;
+                    myAdapter.setLocation(latNow,longNow);
+                    //bearing = location.getBearing(); // 0-360 degrees 0 at North
 
-                        if (myAdapter == null) return;
-                        myAdapter.setLocation(latNow,longNow);
-                        //bearing = location.getBearing(); // 0-360 degrees 0 at North
+                    // if accuracy is worse than 1/10 of a mile do not update distance to map
+                    if (accuracy > 160.9344) {
+                        Toast.makeText(MainActivity.this, "Acquiring location...", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
 
-                        // if accuracy is worse than 1/10 of a mile do not update distance to map
-
-                        //Log.d("Accuracy", "onLocationResult: accuracy="+accuracy);
-                        if (accuracy > 160.9344) {
-                            Toast.makeText(MainActivity.this, "Acquiring location...", Toast.LENGTH_SHORT).show();
+                    if (latBefore != -1.0) {
+                        try {
+                            Location.distanceBetween(latBefore, longBefore, latNow, longNow, results);
+                        } catch (IllegalArgumentException e) {
                             return;
                         }
+                    }
 
-                        if (latBefore != 0.0) {
-                            try {
-                                Location.distanceBetween(latBefore, longBefore, latNow, longNow, results);
-                            } catch (IllegalArgumentException e) {
-                                return;
-                            }
-                        }
+                    // if change in location is > .1 miles update distance to map
+                    if (latBefore == -1.0 || results[0] > updateProximityDist) {
+                        // Update distance to map.
+                        myAdapter.getDistToMap();
 
-                        // if change in location is > .1 miles update distance to map
-                        if (latBefore == 0.0 || results[0] > updateProximityDist) {
-                            // Update distance to map.
-                            myAdapter.getDistToMap();
+                        // Fetch the sort preference on a background thread
+                        dbExecutor.execute(() -> {
+                            String sort = DBHandler.getInstance(MainActivity.this).getMapSort();
+                            // Switch to main thread to push the data to your UI
+                            runOnUiThread(() -> {
+                                //String sort = dbHandler.getMapSort();
+                                if ((sort.equals("proximity") || sort.equals("proximityrev")) && sortFlag) {
+                                    if (sort.equals("proximity")) {
+                                        myAdapter.SortByProximity();
+                                    }else {
+                                        myAdapter.SortByProximityReverse();
+                                    }
+                                    myAdapter.notifyDataSetChanged();
 
-                            // Fetch the sort preference on a background thread
-                            dbExecutor.execute(() -> {
-                                String sort = DBHandler.getInstance(MainActivity.this).getMapSort();
-                                // Switch to main thread to push the data to your UI
-                                runOnUiThread(() -> {
-                                    //String sort = dbHandler.getMapSort();
-                                    if ((sort.equals("proximity") || sort.equals("proximityrev")) && sortFlag) {
-                                        if (sort.equals("proximity"))
-                                            myAdapter.SortByProximity();
-                                        else
-                                            myAdapter.SortByProximityReverse();
-                                        myAdapter.notifyDataSetChanged();
+                                    // Refresh all data in visible table cells
+                                    for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
+                                        View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
+                                        if (v == null)
+                                            continue;
 
-                                        // Refresh all data in visible table cells
-                                        for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
-                                            View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
-                                            if (v == null)
-                                                continue;
-
-                                            ImageView img = v.findViewById(R.id.pdfImage);
-                                            try {
-                                                File imgFile = new File(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getThumbnail());
-                                                Bitmap myBitmap;
-                                                myBitmap = BitmapFactory.decodeFile(imgFile.getAbsolutePath());
-                                                if (myBitmap != null)
-                                                    img.setImageBitmap(myBitmap);
-                                                else
-                                                    img.setImageResource(R.drawable.pdf_icon);
-                                            } catch (Exception ex) {
-                                                Toast.makeText(MainActivity.this, "Problem reading thumbnail.", Toast.LENGTH_LONG).show();
+                                        ImageView img = v.findViewById(R.id.pdfImage);
+                                        try {
+                                            File imgFile = new File(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getThumbnail());
+                                            Bitmap myBitmap;
+                                            myBitmap = BitmapFactory.decodeFile(imgFile.getAbsolutePath());
+                                            if (myBitmap != null)
+                                                img.setImageBitmap(myBitmap);
+                                            else
                                                 img.setImageResource(R.drawable.pdf_icon);
-                                            }
+                                        } catch (Exception ex) {
+                                            Toast.makeText(MainActivity.this, "Problem reading thumbnail.", Toast.LENGTH_LONG).show();
+                                            img.setImageResource(R.drawable.pdf_icon);
+                                        }
 
-                                            TextView name = v.findViewById(R.id.nameTxt);
-                                            name.setText(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getName());
-                                            TextView fileSize = v.findViewById(R.id.fileSizeTxt);
-                                            fileSize.setText(myAdapter.pdfMaps.get(i).getFileSize());
-                                            TextView distToMap = v.findViewById(R.id.distToMapTxt);
-                                            String dist = myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getDistToMap();
-                                            if (dist.equals("onmap")) {
-                                                v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
-                                                distToMap.setText("");
-                                            } else {
-                                                v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
-                                                distToMap.setText(dist);
-                                            }
+                                        TextView name = v.findViewById(R.id.nameTxt);
+                                        name.setText(myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getName());
+                                        TextView fileSize = v.findViewById(R.id.fileSizeTxt);
+                                        fileSize.setText(myAdapter.pdfMaps.get(i).getFileSize());
+                                        TextView distToMap = v.findViewById(R.id.distToMapTxt);
+                                        String dist = myAdapter.pdfMaps.get(i - lv.getFirstVisiblePosition()).getDistToMap();
+                                        if (dist.equals("onmap")) {
+                                            v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
+                                            distToMap.setText("");
+                                        } else {
+                                            v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
+                                            distToMap.setText(dist);
                                         }
                                     }
-                                    // Refresh only dist to map
-                                    else if (sortFlag) {
-                                        // Refresh visible table cells
-                                        for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
-                                            View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
-                                            if (v == null)
-                                                continue;
-                                            TextView distToMap = v.findViewById(R.id.distToMapTxt);
-                                            String dist = myAdapter.pdfMaps.get(i).getDistToMap();
-                                            //Log.d("Distance", "accuracy:"+accuracy+"  "+myAdapter.pdfMaps.get(i).getName()+" "+dist);
-                                            if (dist.equals("onmap")) {
-                                                v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
-                                                distToMap.setText("");
-                                            } else {
-                                                v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
-                                                distToMap.setText(dist);
-                                            }
+                                }
+                                // Refresh only dist to map
+                                else if (sortFlag) {
+                                    // Refresh visible table cells
+                                    for (int i = 0; i < myAdapter.pdfMaps.size(); i++) {
+                                        View v = lv.getChildAt(i - lv.getFirstVisiblePosition());
+                                        if (v == null)
+                                            continue;
+                                        TextView distToMap = v.findViewById(R.id.distToMapTxt);
+                                        String dist = myAdapter.pdfMaps.get(i).getDistToMap();
+                                        //Log.d("Distance", "accuracy:"+accuracy+"  "+myAdapter.pdfMaps.get(i).getName()+" "+dist);
+                                        if (dist.equals("onmap")) {
+                                            v.findViewById(R.id.locationIcon).setVisibility(View.VISIBLE);
+                                            distToMap.setText("");
+                                        } else {
+                                            v.findViewById(R.id.locationIcon).setVisibility(View.GONE);
+                                            distToMap.setText(dist);
                                         }
                                     }
-                                });
+                                }
                             });
-                        }
+                            // TODO scroll to top??????
+                            //lv.setSelection(0);
+                        });
+                    }
 
-                        // save current location so we can see how much they moved
-                        latBefore = latNow;
-                        longBefore = longNow;
-
+                    // save current location so we can see how much they moved
+                    latBefore = latNow;
+                    longBefore = longNow;
                 } catch (SQLException e){
                     Toast.makeText(MainActivity.this, getResources().getString(R.string.problemReadingDatabase) + e.getMessage(), Toast.LENGTH_LONG).show();
                 }
@@ -545,7 +535,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             // Importing a Map hides this button, show it again
             FloatingActionButton fab = findViewById(R.id.fab);
             fab.setVisibility(View.VISIBLE);
-            latBefore = 0.0; //reset location so it updates
+            latBefore = -1.0; //reset location so it updates
             fillList(); // get dbHandler and maps list from database
 
             // Start Location Services Receiver
@@ -900,7 +890,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 // Sort by Proximity
                 //lv.getFirstVisiblePosition(); // get current top position
                 myAdapter.SortByProximity();
-                lv.setAdapter(myAdapter); // scrolls to the top
+                lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
                     dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("proximity"));
@@ -913,7 +903,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 // Sort by Proximity Reverse
                 //lv.getFirstVisiblePosition(); // get current top position
                 myAdapter.SortByProximityReverse();
-                lv.setAdapter(myAdapter); // scrolls to the top
+                lv.setAdapter(myAdapter);
                 try {
                     // save user sort preference in database on a background thread
                     dbExecutor.execute(() -> DBHandler.getInstance(MainActivity.this).setMapSort("proximityrev"));
